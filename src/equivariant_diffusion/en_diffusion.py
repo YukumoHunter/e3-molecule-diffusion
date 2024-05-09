@@ -3,7 +3,7 @@
 # import numpy as np
 # import math
 # from egnn import models
-# from equivariant_diffusion import utils as diffusion_utils
+from equivariant_diffusion import utils
 
 import jax
 import jax.numpy as jnp
@@ -605,7 +605,7 @@ class EnVariationalDiffusion(torch.nn.Module):
         # Sample z_t given x, h for timestep t, from q(z_t | x, h)
         z_t = alpha_t * xh + sigma_t * eps
 
-        # Assuming diffusion_utils.assert_mean_zero_with_mask is a utility function,
+        # Assuming utils.assert_mean_zero_with_mask is a utility function,
         # you would need to define an equivalent function in JAX if it's not available.
 
         # Neural net prediction.
@@ -731,7 +731,7 @@ class EnVariationalDiffusion(torch.nn.Module):
         eps_t = self.phi(zt, t, node_mask, edge_mask, context)
 
         # Compute mu for p(zs | zt).
-        # Assuming diffusion_utils.assert_mean_zero_with_mask is a utility function,
+        # Assuming utils.assert_mean_zero_with_mask is a utility function,
         # you would need to define an equivalent function in JAX if it's not available.
         mu = zt / alpha_t_given_s - (sigma2_t_given_s / alpha_t_given_s / sigma_t) * eps_t
 
@@ -743,7 +743,7 @@ class EnVariationalDiffusion(torch.nn.Module):
 
         # Project down to avoid numerical runaway of the center of gravity.
         zs = jnp.concatenate(
-            [diffusion_utils.remove_mean_with_mask(zs[:, :, :self.n_dims],
+            [utils.remove_mean_with_mask(zs[:, :, :self.n_dims],
                                                 node_mask),
             zs[:, :, self.n_dims:]], axis=2
         )
@@ -773,7 +773,7 @@ class EnVariationalDiffusion(torch.nn.Module):
         else:
             z = self.sample_combined_position_feature_noise(n_samples, n_nodes, node_mask)
 
-        diffusion_utils.assert_mean_zero_with_mask(z[:, :, :self.n_dims], node_mask)
+        utils.assert_mean_zero_with_mask(z[:, :, :self.n_dims], node_mask)
 
         # Iteratively sample p(z_s | z_t) for t = 1, ..., T, with s = t - 1.
         for s in reversed(range(0, self.T)):
@@ -787,13 +787,13 @@ class EnVariationalDiffusion(torch.nn.Module):
         # Finally sample p(x, h | z_0).
         x, h = self.sample_p_xh_given_z0(z, node_mask, edge_mask, context, fix_noise=fix_noise)
 
-        diffusion_utils.assert_mean_zero_with_mask(x, node_mask)
+        utils.assert_mean_zero_with_mask(x, node_mask)
 
         max_cog = jnp.sum(x, axis=1, keepdims=True).abs().max().item()
         if max_cog > 5e-2:
             print(f'Warning cog drift with error {max_cog:.3f}. Projecting '
                   f'the positions down.')
-            x = diffusion_utils.remove_mean_with_mask(x, node_mask)
+            x = utils.remove_mean_with_mask(x, node_mask)
 
         return x, h
 
@@ -804,7 +804,7 @@ class EnVariationalDiffusion(torch.nn.Module):
         """
         z = self.sample_combined_position_feature_noise(n_samples, n_nodes, node_mask)
 
-        diffusion_utils.assert_mean_zero_with_mask(z[:, :, :self.n_dims], node_mask)
+        utils.assert_mean_zero_with_mask(z[:, :, :self.n_dims], node_mask)
 
         if keep_frames is None:
             keep_frames = self.T
@@ -822,7 +822,7 @@ class EnVariationalDiffusion(torch.nn.Module):
             z = self.sample_p_zs_given_zt(
                 s_array, t_array, z, node_mask, edge_mask, context)
 
-            diffusion_utils.assert_mean_zero_with_mask(z[:, :, :self.n_dims], node_mask)
+            utils.assert_mean_zero_with_mask(z[:, :, :self.n_dims], node_mask)
 
             # Write to chain tensor.
             write_index = (s * keep_frames) // self.T
@@ -831,7 +831,7 @@ class EnVariationalDiffusion(torch.nn.Module):
         # Finally sample p(x, h | z_0).
         x, h = self.sample_p_xh_given_z0(z, node_mask, edge_mask, context)
 
-        diffusion_utils.assert_mean_zero_with_mask(x[:, :, :self.n_dims], node_mask)
+        utils.assert_mean_zero_with_mask(x[:, :, :self.n_dims], node_mask)
 
         xh = jnp.concatenate([x, h['categorical'], h['integer']], axis=2)
         chain = jax.ops.index_update(chain, 0, xh)  # Overwrite last frame with the resulting x and h.

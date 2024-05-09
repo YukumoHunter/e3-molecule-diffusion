@@ -127,138 +127,126 @@ def gaussian_KL_for_dimension(q_mu, q_sigma, p_mu, p_sigma, d):
     return d * jnp.log(p_sigma / q_sigma) + 0.5 * (d * q_sigma**2 + mu_norm2) / (p_sigma**2) - 0.5 * d
 
 #%%
-class PositiveLinear:
-    """Linear layer with weights forced to be positive."""
+# Linear layer
+    # """Linear layer with weights forced to be positive."""
+def positive_linear(params, inputs):
+    weight, bias = params
+    positive_weight = softplus(weight)
+    return jnp.dot(inputs, positive_weight.T) + bias if bias is not None else jnp.dot(inputs, positive_weight.T)
 
-    def __init__(self, in_features, out_features, bias=True,
-                 weight_init_offset=-2):
-        self.in_features = in_features
-        self.out_features = out_features
-        self.weight_init_offset = weight_init_offset
-        self.bias = bias
-        
-        # Initialize parameters
-        self.init_params()
+def init_positive_linear(rng, in_features, out_features, bias=True, weight_init_offset=-2):
+    w_key, b_key = jax.random.split(rng)
+    weight_init = variance_scaling(2.0, 'fan_in', 'uniform')
+    bias_init = uniform()
+    weight_shape = (out_features, in_features)
+    bias_shape = (out_features,) if bias else None
+    weight = weight_init(w_key, weight_shape)
+    # weight = weight + weight_init_offset
+    if weight_init_offset != 0:
+        weight = weight + weight_init_offset
+    bias = bias_init(b_key, bias_shape) if bias else None
+    return (weight, bias)
 
-    def init_params(self):
-        # Initialize weights
-        self.weight = random.uniform(
-            key=random.PRNGKey(0),
-            shape=(self.out_features, self.in_features),
-            minval=0.0,
-            maxval=1.0
-        )
-        self.weight += self.weight_init_offset
-        
-        # Initialize bias if needed
-        if self.bias:
-            self.bias_param = jnp.zeros(self.out_features)
-
-    def forward(self, input):
-        # Compute positive weights
-        positive_weight = softplus(self.weight)
-        
-        # Perform linear transformation
-        output = jnp.dot(input, positive_weight.T)
-        
-        # Add bias if needed
-        if self.bias:
-            output += self.bias_param
-        
-        return output
+## Example usage:
+# batch_size = 64
+# rng = jax.random.PRNGKey(0)
+# params = init_positive_linear(rng, in_features=16, out_features=10, bias=True, weight_init_offset=-2)
+# inputs = jnp.ones((batch_size, 16))  # Assuming batch_size is defined
+# outputs = positive_linear(params, inputs)
 
 #%%
-class SinusoidalPosEmb:
-    def __init__(self, dim):
-        super().__init__()
-        self.dim = dim
-
-    def forward(self, x):
-        x = x.squeeze() * 1000
-        assert len(x.shape) == 1
-        device = x.device
-        half_dim = self.dim // 2
-        emb = jnp.log(10000) / (half_dim - 1)
-        emb = jnp.exp(jnp.arange(half_dim) * -emb)
-        emb = x[:, None] * emb[None, :]
-        emb = jnp.concatenate((jnp.sin(emb), jnp.cos(emb)), axis=-1)
-        return emb
+#class SinusoidalPosEmb(torch.nn.Module):
+def SinusoidalPosEmb(dim, x):
+    x = x.squeeze() * 1000
+    assert len(x.shape) == 1
+    half_dim = dim // 2
+    emb = jnp.log(10000) / (half_dim - 1)
+    emb = jnp.exp(jnp.arange(half_dim) * -emb)
+    emb = x[:, None] * emb[None, :]
+    emb = jnp.concatenate((jnp.sin(emb), jnp.cos(emb)), axis=-1)
+    return emb
     
 #%%
-class PredefinedNoiseSchedule:
-    def __init__(self, noise_schedule, timesteps, precision):
-        super(PredefinedNoiseSchedule, self).__init__()
-        self.timesteps = timesteps
+# class PredefinedNoiseSchedule(torch.nn.Module):
+    # """
+    # Predefined noise schedule. Essentially creates a lookup array for predefined (non-learned) noise schedules.
+    # """
+def predefined_noise_schedule(noise_schedule, timesteps, precision):
+    if noise_schedule == 'cosine':
+        alphas2 = cosine_beta_schedule(timesteps)
+    elif 'polynomial' in noise_schedule:
+        splits = noise_schedule.split('_')
+        assert len(splits) == 2
+        power = float(splits[1])
+        alphas2 = polynomial_schedule(timesteps, s=precision, power=power)
+    else:
+        raise ValueError(noise_schedule)
 
-        if noise_schedule == 'cosine':
-            alphas2 = cosine_beta_schedule(timesteps)
-        elif 'polynomial' in noise_schedule:
-            splits = noise_schedule.split('_')
-            assert len(splits) == 2
-            power = float(splits[1])
-            alphas2 = polynomial_schedule(timesteps, s=precision, power=power)
-        else:
-            raise ValueError(noise_schedule)
+    sigmas2 = 1 - alphas2
 
-        # print('alphas2', alphas2)
+    log_alphas2 = jnp.log(alphas2)
+    log_sigmas2 = jnp.log(sigmas2)
 
-        sigmas2 = 1 - alphas2
+    log_alphas2_to_sigmas2 = log_alphas2 - log_sigmas2
 
-        log_alphas2 = jnp.log(alphas2)
-        log_sigmas2 = jnp.log(sigmas2)
+    print('gamma', -log_alphas2_to_sigmas2)
 
-        log_alphas2_to_sigmas2 = log_alphas2 - log_sigmas2
+    gamma = -log_alphas2_to_sigmas2
 
-        print('gamma', -log_alphas2_to_sigmas2)
+    return gamma
 
-        self.gamma = jnp.array(-log_alphas2_to_sigmas2, dtype=jnp.float32)
+def predefined_noise_forward(gamma, t, timesteps):
+    t_int = jnp.round(t * timesteps).astype(int)
+    return gamma[t_int]
+
+#%%
+
+def gamma_tilde(params, t):
+    l1_params, l2_params, l3_params, _, _ = params
+
+    l1_out = positive_linear(l1_params, t)
+    l2_out = positive_linear(l2_params, l1_out)
+    l3_out = positive_linear(l3_params, jax.nn.sigmoid(l2_out))
+
+    return l1_out + l3_out
+
+
+     
+def gamma_network(params, t):
+    zeros, ones = jnp.zeros_like(t), jnp.ones_like(t)
+    gamma_tilde_0 = gamma_tilde(params, zeros)
+    gamma_tilde_1 = gamma_tilde(params, ones)
+    gamma_tilde_t = gamma_tilde(params, t)
     
-    def forward(self, t):
-        t_int = jnp.round(t * self.timesteps).astype(jnp.int64)
-        return self.gamma[t_int]
+    _, _, _, gamma_0, gamma_1 = params
+    normalized_gamma = (gamma_tilde_t - gamma_tilde_0) / (gamma_tilde_1 - gamma_tilde_0)
 
-class GammaNetwork:
-    def __init__(self):
-        super().__init__()
-
-        self.l1 = PositiveLinear(1, 1)
-        self.l2 = PositiveLinear(1, 1024)
-        self.l3 = PositiveLinear(1024, 1)
-
-        self.gamma_0 = jnp.array([-5.], dtype=jnp.float32)
-        self.gamma_1 = jnp.array([10.], dtype=jnp.float32)
-        self.show_schedule()
-
-    def gamma_tilde(self, t):
-        l1_t = self.l1(t)
-        return l1_t + self.l3(jax.nn.sigmoid(self.l2(l1_t)))
+    return gamma_0 + (gamma_1 - gamma_0) * normalized_gamma
     
+def init_gamma_network_params(rng, in_features=1, hidden_size1=1, hidden_size2=1024, out_features=1):
+    l1_params = init_positive_linear(rng, in_features=in_features, out_features=hidden_size1)
+    l2_params = init_positive_linear(rng, in_features=hidden_size1, out_features=hidden_size2)
+    l3_params = init_positive_linear(rng, in_features=hidden_size2, out_features=out_features)
+    gamma_0 = -5.0
+    gamma_1 = 10.0
+    return (l1_params, l2_params, l3_params, gamma_0, gamma_1)
     
-    def show_schedule(params, num_steps = 50):
-        t = jnp.linspace(0, 1, num_steps).reshape(num_steps, 1)
-        gamma = self.forward(t)
-        print("Gamma schedule:")
-        print(gamma)
-    
-    def forward(self, t):
-        zeros, ones = jnp.zeros_like(t), jnp.ones_like(t)
-        # Not super efficient.
-        gamma_tilde_0 = self.gamma_tilde(zeros)
-        gamma_tilde_1 = self.gamma_tilde(ones)
-        gamma_tilde_t = self.gamma_tilde(t)
+def show_schedule(params, num_steps = 50):
+    t = jnp.linspace(0, 1, num_steps).reshape(-1, 1)
+    gamma_schedule = gamma_network(params, t)
+    print("Gamma schedule:")
+    print(gamma_schedule)
+# Example usage:
+# rng = jax.random.PRNGKey(0)
+# params = init_gamma_network_params(rng)
+# print(params)
 
-        # Normalize to [0, 1]
-        normalized_gamma = (gamma_tilde_t - gamma_tilde_0) / (gamma_tilde_1 - gamma_tilde_0)
 
-        # Rescale to [gamma_0, gamma_1]
-        gamma = self.gamma_0 + (self.gamma_1 - self.gamma_0) * normalized_gamma
-
-        return gamma
-
+#%%
 def cdf_standard_gaussian(x):
     return 0.5 * (1. + jax.scipy.special.erf(x / jnp.sqrt(2)))
 
-
+#%% 
 #Harold and Robin part
 
 class EnVariationalDiffusion(torch.nn.Module):

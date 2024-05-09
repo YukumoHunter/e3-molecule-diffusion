@@ -1,3 +1,4 @@
+#%%
 # from equivariant_diffusion import utils
 # import numpy as np
 # import math
@@ -10,7 +11,12 @@ from jax import device_put
 from jax import random
 from jax import jit
 from jax.scipy.special import logsumexp
+from jax.nn import softplus
+from jax.nn.initializers import uniform, variance_scaling
+from jax.nn.initializers import uniform, kaiming_uniform
 
+
+#%%
 def expm1(x):
     return jax.lax.expm1(x)
 
@@ -24,6 +30,7 @@ def clip_noise_schedule(alphas2, clip_value=0.001):
     """
     For a noise schedule given by alpha^2, this clips alpha_t / alpha_t-1. This may help improve stability during
     sampling.
+    Makes sure its not too low
     """
     alphas2 = jnp.concatenate([jnp.ones(1), alphas2], axis=0)
     alphas_step = (alphas2[1:] / alphas2[:-1])
@@ -32,8 +39,10 @@ def clip_noise_schedule(alphas2, clip_value=0.001):
 
     return alphas2
 
+#%%
 def polynomial_schedule(timesteps: int, s=1e-4, power=3.):
     """
+    Amount of noise per step
     A noise schedule based on a simple polynomial equation: 1 - x^power.
     """
     steps = timesteps + 1
@@ -47,6 +56,7 @@ def polynomial_schedule(timesteps: int, s=1e-4, power=3.):
     alphas2 = precision * alphas2 + s
 
     return alphas2
+
 
 def cosine_beta_schedule(timesteps, s=0.008, raise_to_power: float = 1):
     """
@@ -67,12 +77,15 @@ def cosine_beta_schedule(timesteps, s=0.008, raise_to_power: float = 1):
 
     return alphas_cumprod
 
+#%%
 def gaussian_entropy(mu, sigma):
     # In case sigma needed to be broadcast (which is very likely in this code).
     zeros = jnp.zeros_like(mu)
     return sum_except_batch(
         zeros + 0.5 * jnp.log(2 * jnp.pi * sigma**2) + 0.5
     )
+
+#%%
 
 def gaussian_KL(q_mu, q_sigma, p_mu, p_sigma, node_mask):
     """Computes the KL distance between two normal distributions.
@@ -92,6 +105,8 @@ def gaussian_KL(q_mu, q_sigma, p_mu, p_sigma, node_mask):
                 - 0.5
             ) * node_mask)
 
+#%%
+
 def gaussian_KL_for_dimension(q_mu, q_sigma, p_mu, p_sigma, d):
     """Computes the KL distance between two normal distributions.
 
@@ -104,116 +119,123 @@ def gaussian_KL_for_dimension(q_mu, q_sigma, p_mu, p_sigma, d):
             The KL distance, summed over all dimensions except the batch dim.
         """
     mu_norm2 = sum_except_batch((q_mu - p_mu)**2)
-
-    if len(q_sigma.shape) != 1 or len(p_sigma.shape) != 1:
-        raise ValueError("Dimensions of q_sigma and p_sigma must be 1")
+    assert len(q_sigma.size()) == 1
+    assert len(p_sigma.size()) == 1
+    # if len(q_sigma.shape) != 1 or len(p_sigma.shape) != 1:
+    #     raise ValueError("Dimensions of q_sigma and p_sigma must be 1")
 
     return d * jnp.log(p_sigma / q_sigma) + 0.5 * (d * q_sigma**2 + mu_norm2) / (p_sigma**2) - 0.5 * d
 
-#Not sure
-class PositiveLinear(torch.nn.Module):
-    """Linear layer with weights forced to be positive."""
+#%%
+# Linear layer
+    # """Linear layer with weights forced to be positive."""
+def positive_linear(params, inputs):
+    weight, bias = params
+    positive_weight = softplus(weight)
+    return jnp.dot(inputs, positive_weight.T) + bias if bias is not None else jnp.dot(inputs, positive_weight.T)
 
-    def __init__(self, in_features: int, out_features: int, bias=True, weight_init_offset=-2):
-        self.in_features = in_features
-        self.out_features = out_features
+def init_positive_linear(rng, in_features, out_features, bias=True, weight_init_offset=-2):
+    w_key, b_key = jax.random.split(rng)
+    weight_init = variance_scaling(2.0, 'fan_in', 'uniform')
+    bias_init = uniform()
+    weight_shape = (out_features, in_features)
+    bias_shape = (out_features,) if bias else None
+    weight = weight_init(w_key, weight_shape)
+    # weight = weight + weight_init_offset
+    if weight_init_offset != 0:
+        weight = weight + weight_init_offset
+    bias = bias_init(b_key, bias_shape) if bias else None
+    return (weight, bias)
 
-        # Initialize weights with uniform distribution
-        weights_shape = (self.out_features, self.in_features)
-        self.weight = jnp.zeros(weights_shape)
+## Example usage:
+# batch_size = 64
+# rng = jax.random.PRNGKey(0)
+# params = init_positive_linear(rng, in_features=16, out_features=10, bias=True, weight_init_offset=-2)
+# inputs = jnp.ones((batch_size, 16))  # Assuming batch_size is defined
+# outputs = positive_linear(params, inputs)
 
-        # Initialize biases if necessary
-        if bias:
-            self.bias = jnp.zeros(self.out_features)
-        else:
-            self.bias = None
-            
-        self.weight_init_offset = weight_init_offset
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        # Initialize weights with Kaiming uniform initialization
-        rng_key = random.PRNGKey(0)
-        bound = jnp.sqrt(5)
-        fan_in = self.in_features
-        fan_out = self.out_features
-        shape = (fan_out, fan_in)
-        self.weight = random.uniform(rng_key, shape, minval=-bound, maxval=bound)
-
-        # Add weight initialization offset
-        self.weight += self.weight_init_offset
-
-        # Initialize biases if necessary
-        if self.bias is not None:
-            self.bias = random.uniform(rng_key, (fan_out,), minval=-bound, maxval=bound)
-
-    def forward(self, input):
-        # Apply softplus to ensure positive weights
-        positive_weight = lax.logaddexp(0.0, self.weight)
-        
-        # Compute linear transformation
-        output = jnp.dot(input, positive_weight.T)
-
-        # Add bias if necessary
-        if self.bias is not None:
-            output = output + self.bias
-
-        return output
-
-
-class SinusoidalPosEmb(torch.nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.dim = dim
-
-    def forward(self, x):
-        x = x.squeeze() * 1000
-        assert len(x.shape) == 1
-        device = x.device
-        half_dim = self.dim // 2
-        emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, device=device) * -emb)
-        emb = x[:, None] * emb[None, :]
-        emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
-        return emb
+#%%
+#class SinusoidalPosEmb(torch.nn.Module):
+def SinusoidalPosEmb(dim, x):
+    x = x.squeeze() * 1000
+    assert len(x.shape) == 1
+    half_dim = dim // 2
+    emb = jnp.log(10000) / (half_dim - 1)
+    emb = jnp.exp(jnp.arange(half_dim) * -emb)
+    emb = x[:, None] * emb[None, :]
+    emb = jnp.concatenate((jnp.sin(emb), jnp.cos(emb)), axis=-1)
+    return emb
     
+#%%
+# class PredefinedNoiseSchedule(torch.nn.Module):
+    # """
+    # Predefined noise schedule. Essentially creates a lookup array for predefined (non-learned) noise schedules.
+    # """
+def predefined_noise_schedule(noise_schedule, timesteps, precision):
+    if noise_schedule == 'cosine':
+        alphas2 = cosine_beta_schedule(timesteps)
+    elif 'polynomial' in noise_schedule:
+        splits = noise_schedule.split('_')
+        assert len(splits) == 2
+        power = float(splits[1])
+        alphas2 = polynomial_schedule(timesteps, s=precision, power=power)
+    else:
+        raise ValueError(noise_schedule)
 
-class PredefinedNoiseSchedule(torch.nn.Module):
-    """
-    Predefined noise schedule. Essentially creates a lookup array for predefined (non-learned) noise schedules.
-    """
-    def __init__(self, noise_schedule, timesteps, precision):
-        super(PredefinedNoiseSchedule, self).__init__()
-        self.timesteps = timesteps
+    sigmas2 = 1 - alphas2
 
-        if noise_schedule == 'cosine':
-            alphas2 = cosine_beta_schedule(timesteps)
-        elif 'polynomial' in noise_schedule:
-            splits = noise_schedule.split('_')
-            assert len(splits) == 2
-            power = float(splits[1])
-            alphas2 = polynomial_schedule(timesteps, s=precision, power=power)
-        else:
-            raise ValueError(noise_schedule)
+    log_alphas2 = jnp.log(alphas2)
+    log_sigmas2 = jnp.log(sigmas2)
 
-        print('alphas2', alphas2)
+    log_alphas2_to_sigmas2 = log_alphas2 - log_sigmas2
 
-        sigmas2 = 1 - alphas2
+    print('gamma', -log_alphas2_to_sigmas2)
 
-        log_alphas2 = np.log(alphas2)
-        log_sigmas2 = np.log(sigmas2)
+    gamma = -log_alphas2_to_sigmas2
 
-        log_alphas2_to_sigmas2 = log_alphas2 - log_sigmas2
+    return gamma
 
-        print('gamma', -log_alphas2_to_sigmas2)
+def predefined_noise_forward(gamma, t, timesteps):
+    t_int = jnp.round(t * timesteps).astype(int)
+    return gamma[t_int]
 
-        self.gamma = torch.nn.Parameter(
-            torch.from_numpy(-log_alphas2_to_sigmas2).float(),
-            requires_grad=False)
+#%%
 
-    def forward(self, t):
-        t_int = torch.round(t * self.timesteps).long()
-        return self.gamma[t_int]
+def gamma_tilde():
+     
+def gamma_network(params, t):
+    """The gamma network models a monotonic increasing function. Construction as in the VDM paper."""
+    l1_params, l2_params, l3_params, gamma_0, gamma_1 = params
+
+    l1_out = positive_linear(l1_params, t)
+    l2_out = positive_linear(l2_params, l1_out)
+    l3_out = positive_linear(l3_params, jax.nn.sigmoid(l2_out))
+
+    gamma_tilde_0 = l1_out + l3_out
+    gamma_tilde_1 = l1_out + l3_out + gamma_1 - gamma_0
+    gamma_tilde_t = gamma_tilde_0 + (gamma_tilde_1 - gamma_tilde_0) * t
+
+    gamma = gamma_0 + (gamma_1 - gamma_0) * (gamma_tilde_t - gamma_tilde_0) / (gamma_tilde_1 - gamma_tilde_0)
+
+    return gamma
+    
+def init_gamma_network_params(rng, in_features=1, hidden_size1=1, hidden_size2=1024, out_features=1):
+    l1_params = init_positive_linear(rng, in_features=in_features, out_features=hidden_size1)
+    l2_params = init_positive_linear(rng, in_features=hidden_size1, out_features=hidden_size2)
+    l3_params = init_positive_linear(rng, in_features=hidden_size2, out_features=out_features)
+    gamma_0 = -5.0
+    gamma_1 = 10.0
+    return (l1_params, l2_params, l3_params, gamma_0, gamma_1)
+    
+def show_schedule(params, num_steps = 50):
+    t = jnp.linspace(0, 1, num_steps).reshape(-1, 1)
+    gamma_schedule = gamma_network(params, t)
+    print("Gamma schedule:")
+    print(gamma_schedule)
+# Example usage:
+# rng = jax.random.PRNGKey(0)
+# params = init_gamma_network_params(rng)
+# print(params)
 
 
 class GammaNetwork(torch.nn.Module):
@@ -255,10 +277,11 @@ class GammaNetwork(torch.nn.Module):
 
         return gamma
 
-
+#%%
 def cdf_standard_gaussian(x):
-    return 0.5 * (1. + torch.erf(x / math.sqrt(2)))
-
+    return 0.5 * (1. + jax.scipy.special.erf(x / jnp.sqrt(2)))
+#%% 
+#Harold and Robin part
 
 class EnVariationalDiffusion(torch.nn.Module):
     """

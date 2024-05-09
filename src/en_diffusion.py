@@ -201,23 +201,27 @@ def predefined_noise_forward(gamma, t, timesteps):
 
 #%%
 
-def gamma_tilde():
-     
-def gamma_network(params, t):
-    """The gamma network models a monotonic increasing function. Construction as in the VDM paper."""
-    l1_params, l2_params, l3_params, gamma_0, gamma_1 = params
+def gamma_tilde(params, t):
+    l1_params, l2_params, l3_params, _, _ = params
 
     l1_out = positive_linear(l1_params, t)
     l2_out = positive_linear(l2_params, l1_out)
     l3_out = positive_linear(l3_params, jax.nn.sigmoid(l2_out))
 
-    gamma_tilde_0 = l1_out + l3_out
-    gamma_tilde_1 = l1_out + l3_out + gamma_1 - gamma_0
-    gamma_tilde_t = gamma_tilde_0 + (gamma_tilde_1 - gamma_tilde_0) * t
+    return l1_out + l3_out
 
-    gamma = gamma_0 + (gamma_1 - gamma_0) * (gamma_tilde_t - gamma_tilde_0) / (gamma_tilde_1 - gamma_tilde_0)
 
-    return gamma
+     
+def gamma_network(params, t):
+    zeros, ones = jnp.zeros_like(t), jnp.ones_like(t)
+    gamma_tilde_0 = gamma_tilde(params, zeros)
+    gamma_tilde_1 = gamma_tilde(params, ones)
+    gamma_tilde_t = gamma_tilde(params, t)
+    
+    _, _, _, gamma_0, gamma_1 = params
+    normalized_gamma = (gamma_tilde_t - gamma_tilde_0) / (gamma_tilde_1 - gamma_tilde_0)
+
+    return gamma_0 + (gamma_1 - gamma_0) * normalized_gamma
     
 def init_gamma_network_params(rng, in_features=1, hidden_size1=1, hidden_size2=1024, out_features=1):
     l1_params = init_positive_linear(rng, in_features=in_features, out_features=hidden_size1)
@@ -238,48 +242,10 @@ def show_schedule(params, num_steps = 50):
 # print(params)
 
 
-class GammaNetwork(torch.nn.Module):
-    """The gamma network models a monotonic increasing function. Construction as in the VDM paper."""
-    def __init__(self):
-        super().__init__()
-
-        self.l1 = PositiveLinear(1, 1)
-        self.l2 = PositiveLinear(1, 1024)
-        self.l3 = PositiveLinear(1024, 1)
-
-        self.gamma_0 = torch.nn.Parameter(torch.tensor([-5.]))
-        self.gamma_1 = torch.nn.Parameter(torch.tensor([10.]))
-        self.show_schedule()
-
-    def show_schedule(self, num_steps=50):
-        t = torch.linspace(0, 1, num_steps).view(num_steps, 1)
-        gamma = self.forward(t)
-        print('Gamma schedule:')
-        print(gamma.detach().cpu().numpy().reshape(num_steps))
-
-    def gamma_tilde(self, t):
-        l1_t = self.l1(t)
-        return l1_t + self.l3(torch.sigmoid(self.l2(l1_t)))
-
-    def forward(self, t):
-        zeros, ones = torch.zeros_like(t), torch.ones_like(t)
-        # Not super efficient.
-        gamma_tilde_0 = self.gamma_tilde(zeros)
-        gamma_tilde_1 = self.gamma_tilde(ones)
-        gamma_tilde_t = self.gamma_tilde(t)
-
-        # Normalize to [0, 1]
-        normalized_gamma = (gamma_tilde_t - gamma_tilde_0) / (
-                gamma_tilde_1 - gamma_tilde_0)
-
-        # Rescale to [gamma_0, gamma_1]
-        gamma = self.gamma_0 + (self.gamma_1 - self.gamma_0) * normalized_gamma
-
-        return gamma
-
 #%%
 def cdf_standard_gaussian(x):
     return 0.5 * (1. + jax.scipy.special.erf(x / jnp.sqrt(2)))
+
 #%% 
 #Harold and Robin part
 

@@ -12,8 +12,9 @@ from jax import random
 from jax import jit
 from jax.scipy.special import logsumexp
 from jax.nn import softplus
-from jax.nn.initializers import uniform, variance_scaling
+from jax.nn.initializers import uniform, variance_scaling, 
 from jax.nn.initializers import uniform, kaiming_uniform
+import flax.linnen as nn
 
 
 #%%
@@ -127,121 +128,122 @@ def gaussian_KL_for_dimension(q_mu, q_sigma, p_mu, p_sigma, d):
     return d * jnp.log(p_sigma / q_sigma) + 0.5 * (d * q_sigma**2 + mu_norm2) / (p_sigma**2) - 0.5 * d
 
 #%%
-class PositiveLinear:
-    """Linear layer with weights forced to be positive."""
+class PositiveLinear(nn.Module):
+    # in_features: int
+    out_features: int
+    use_bias: bool = True
+    weight_init_offset = -2
+    dtype = jnp.float32
 
-    def __init__(self, in_features, out_features, bias=True,
-                 weight_init_offset=-2):
-        self.in_features = in_features
-        self.out_features = out_features
-        self.weight_init_offset = weight_init_offset
-        self.bias = bias
-        
-        # Initialize parameters
-        self.init_params()
-
-    def init_params(self):
-        # Initialize weights
-        self.weight = random.uniform(
-            key=random.PRNGKey(0),
-            shape=(self.out_features, self.in_features),
-            minval=0.0,
-            maxval=1.0
-        )
-        self.weight += self.weight_init_offset
-        
-        # Initialize bias if needed
-        if self.bias:
-            self.bias_param = jnp.zeros(self.out_features)
-
-    def forward(self, input):
-        # Compute positive weights
-        positive_weight = softplus(self.weight)
-        
-        # Perform linear transformation
-        output = jnp.dot(input, positive_weight.T)
-        
-        # Add bias if needed
-        if self.bias:
-            output += self.bias_param
-        
-        return output
-
-#%%
-class SinusoidalPosEmb:
-    def __init__(self, dim):
-        super().__init__()
-        self.dim = dim
-
-    def forward(self, x):
-        x = x.squeeze() * 1000
-        assert len(x.shape) == 1
-        device = x.device
-        half_dim = self.dim // 2
-        emb = jnp.log(10000) / (half_dim - 1)
-        emb = jnp.exp(jnp.arange(half_dim) * -emb)
-        emb = x[:, None] * emb[None, :]
-        emb = jnp.concatenate((jnp.sin(emb), jnp.cos(emb)), axis=-1)
-        return emb
+    def create_weight_init(self):
+        def weight_init(key, shape, dtype, weight_init_offset):
+            return kaiming_uniform()(key, shape, dtype) + weight_init_offset
+        return weight_init
     
-#%%
-class PredefinedNoiseSchedule:
-    def __init__(self, noise_schedule, timesteps, precision):
-        super(PredefinedNoiseSchedule, self).__init__()
-        self.timesteps = timesteps
+    def create_bias_init(self):
+        def bias_init(key, shape, dtype):
+            fan_in, fan_out = shape
+            bound = 1/ fan_in**(1/2) if fan_in > 0 else 0
+            return uniform(2 * bound)(key, (fan_out,), dtype) - bound
+        return bias_init
 
-        if noise_schedule == 'cosine':
-            alphas2 = cosine_beta_schedule(timesteps)
-        elif 'polynomial' in noise_schedule:
-            splits = noise_schedule.split('_')
-            assert len(splits) == 2
-            power = float(splits[1])
-            alphas2 = polynomial_schedule(timesteps, s=precision, power=power)
+    @nn.compact
+    def __call__(self, inputs):
+        weight = self.param("weight",
+                            self.create_weight_init(),
+                            (inputs.shape[-1],self.out_features),
+                            self.dtype,
+                            self.weight_init_offset)
+        if not self.use_bias:
+            return jnp.dot(inputs, softplus(weight))
         else:
-            raise ValueError(noise_schedule)
+            bias = self.param("bias",
+                              self.create_bias_init(),
+                              (inputs.shape[-1], self.out_features),
+                              self.dtype)
+            return jnp.dot(inputs, softplus(weight)) + bias
+        
 
-        # print('alphas2', alphas2)
 
-        sigmas2 = 1 - alphas2
-
-        log_alphas2 = jnp.log(alphas2)
-        log_sigmas2 = jnp.log(sigmas2)
-
-        log_alphas2_to_sigmas2 = log_alphas2 - log_sigmas2
-
-        print('gamma', -log_alphas2_to_sigmas2)
-
-        self.gamma = jnp.array(-log_alphas2_to_sigmas2, dtype=jnp.float32)
+#%%
+def SinusoidalPosEmb(dim, x):
+    x = x.squeeze() * 1000
+    assert len(x.shape) == 1
+    half_dim = dim // 2
+    emb = jnp.log(10000) / (half_dim - 1)
+    emb = jnp.exp(jnp.arange(half_dim) * -emb)
+    emb = x[:, None] * emb[None, :]
+    emb = jnp.concatenate((jnp.sin(emb), jnp.cos(emb)), axis=-1)
+    return emb
     
-    def forward(self, t):
-        t_int = jnp.round(t * self.timesteps).astype(jnp.int64)
-        return self.gamma[t_int]
+#%%
+def predefined_noise_schedule(noise_schedule, timesteps, precision):
+    if noise_schedule == 'cosine':
+        alphas2 = cosine_beta_schedule(timesteps)
+    elif 'polynomial' in noise_schedule:
+        splits = noise_schedule.split('_')
+        assert len(splits) == 2
+        power = float(splits[1])
+        alphas2 = polynomial_schedule(timesteps, s=precision, power=power)
+    else:
+        raise ValueError(noise_schedule)
 
-class GammaNetwork:
-    def __init__(self):
+    sigmas2 = 1 - alphas2
+
+    log_alphas2 = jnp.log(alphas2)
+    log_sigmas2 = jnp.log(sigmas2)
+
+    log_alphas2_to_sigmas2 = log_alphas2 - log_sigmas2
+
+    print('gamma', -log_alphas2_to_sigmas2)
+
+    gamma = -log_alphas2_to_sigmas2
+
+    return gamma
+
+def predefined_noise_forward(gamma, t, timesteps):
+    t_int = jnp.round(t * timesteps).astype(int)
+    return gamma[t_int]
+
+#%%
+class GammaNetwork(nn.Module):
+
+    @nn.compact
+    def __call__(self, inputs):
+# out_features: int
+# use_bias: bool = True
+# weight_init_offset = -2
+# dtype = jnp.float32
+
+        l1 = PositiveLinear(out_features = 1)
+        l2 = PositiveLinear(out_features = 1024)
+        l3 = PositiveLinear(out_features = 1)
+
+
+class GammaNetwork(nn.Module):
+    def setup(self):
         super().__init__()
 
-        self.l1 = PositiveLinear(1, 1)
-        self.l2 = PositiveLinear(1, 1024)
-        self.l3 = PositiveLinear(1024, 1)
+        self.l1 = PositiveLinear(out_features = 1)
+        self.l2 = PositiveLinear(out_features = 1024)
+        self.l3 = PositiveLinear(out_features = 1)
 
-        self.gamma_0 = jnp.array([-5.], dtype=jnp.float32)
-        self.gamma_1 = jnp.array([10.], dtype=jnp.float32)
-        self.show_schedule()
-
+        self.gamma_0 = self.param('weights', lambda key: jnp.array([-5.], dtype=jnp.float32))
+        self.gamma_1 = self.param('weights', lambda key: jnp.array([10.], dtype=jnp.float32))
+        # self.show_schedule()
+        
+    # def show_schedule(params, num_steps = 50):
+    #     t = jnp.linspace(0, 1, num_steps).reshape(num_steps, 1)
+    #     gamma = self.forward(t)
+    #     print("Gamma schedule:")
+    #     print(gamma)
     def gamma_tilde(self, t):
         l1_t = self.l1(t)
         return l1_t + self.l3(jax.nn.sigmoid(self.l2(l1_t)))
     
-    
-    def show_schedule(params, num_steps = 50):
-        t = jnp.linspace(0, 1, num_steps).reshape(num_steps, 1)
-        gamma = self.forward(t)
-        print("Gamma schedule:")
-        print(gamma)
-    
-    def forward(self, t):
+    def __call__(self, t):
         zeros, ones = jnp.zeros_like(t), jnp.ones_like(t)
+
         # Not super efficient.
         gamma_tilde_0 = self.gamma_tilde(zeros)
         gamma_tilde_1 = self.gamma_tilde(ones)
@@ -252,8 +254,15 @@ class GammaNetwork:
 
         # Rescale to [gamma_0, gamma_1]
         gamma = self.gamma_0 + (self.gamma_1 - self.gamma_0) * normalized_gamma
-
         return gamma
+
+def show_schedule(params, num_steps = 50):
+    t = jnp.linspace(0, 1, num_steps).reshape(-1, 1)
+    gamma_schedule = GammaNetwork()(params, t)
+    print("Gamma schedule:")
+    print(gamma_schedule)
+
+
 
 def cdf_standard_gaussian(x):
     return 0.5 * (1. + jax.scipy.special.erf(x / jnp.sqrt(2)))

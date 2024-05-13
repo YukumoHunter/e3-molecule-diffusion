@@ -82,7 +82,7 @@ def adjust_learning_rate(optimizer, epoch, lr_0, factor=0.5, epochs_decay=100):
 
 edges_dic = {}
 
-
+#Removed device
 def get_adj_matrix(n_nodes, batch_size):
     if n_nodes in edges_dic:
         edges_dic_b = edges_dic[n_nodes]

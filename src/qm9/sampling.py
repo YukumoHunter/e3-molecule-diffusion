@@ -49,8 +49,8 @@ def rotate_chain(z):
 def reverse_tensor(x):
     return x[::-1]
 
-
-def sample_chain(args, device, flow, n_tries, dataset_info, prop_dist=None):
+#I removed device
+def sample_chain(args, flow, n_tries, dataset_info, prop_dist=None):
     n_samples = 1
     if args.dataset == 'qm9' or args.dataset == 'qm9_second_half' or args.dataset == 'qm9_first_half':
         n_nodes = 19
@@ -105,8 +105,8 @@ def sample_chain(args, device, flow, n_tries, dataset_info, prop_dist=None):
 
     return one_hot, charges, x
 
-
-def sample(args, device, generative_model, dataset_info,
+#Removed device
+def sample(args, generative_model, dataset_info,
            prop_dist=None, nodesxsample=jnp.array([10]), context=None,
            fix_noise=False):
     max_n_nodes = dataset_info['max_n_nodes']  # this is the maximum node_size in QM9
@@ -152,8 +152,8 @@ def sample(args, device, generative_model, dataset_info,
 
     return one_hot, charges, x, node_mask
 
-
-def sample_sweep_conditional(args, device, generative_model, dataset_info, prop_dist, n_nodes=19, n_frames=100):
+#Removed device
+def sample_sweep_conditional(args, generative_model, dataset_info, prop_dist, n_nodes=19, n_frames=100):
     nodesxsample = jnp.array([n_nodes] * n_frames)
 
     context = []

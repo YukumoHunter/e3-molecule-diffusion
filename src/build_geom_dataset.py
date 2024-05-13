@@ -220,9 +220,8 @@ class GeomDrugsDataLoader(DataLoader):
 
 
 class GeomDrugsTransform(object):
-    def __init__(self, dataset_info, include_charges, device, sequential):
+    def __init__(self, dataset_info, include_charges, sequential):
         self.atomic_number_list = jnp.array(dataset_info['atomic_nb'])[None, :]
-        self.device = device
         self.include_charges = include_charges
         self.sequential = sequential
 

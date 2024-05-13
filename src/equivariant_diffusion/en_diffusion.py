@@ -16,10 +16,9 @@ from jax import jit
 from jax.scipy.special import logsumexp
 from jax.nn import softplus
 from jax.nn.initializers import uniform, variance_scaling, kaiming_uniform
-import flax.linnen as nn
+import flax.linen as nn
 
 
-# %%
 def expm1(x):
     return jax.lax.expm1(x)
 
@@ -45,8 +44,6 @@ def clip_noise_schedule(alphas2, clip_value=0.001):
 
     return alphas2
 
-
-# %%
 def polynomial_schedule(timesteps: int, s=1e-4, power=3.0):
     """
     Amount of noise per step
@@ -85,7 +82,6 @@ def cosine_beta_schedule(timesteps, s=0.008, raise_to_power: float = 1):
     return alphas_cumprod
 
 
-# %%
 def gaussian_entropy(mu, sigma):
     # In case sigma needed to be broadcast (which is very likely in this code).
     zeros = jnp.zeros_like(mu)
@@ -143,7 +139,6 @@ def gaussian_KL_for_dimension(q_mu, q_sigma, p_mu, p_sigma, d):
     )
 
 
-# %%
 class PositiveLinear(nn.Module):
     # in_features: int
     out_features: int
@@ -186,7 +181,6 @@ class PositiveLinear(nn.Module):
             return jnp.dot(inputs, softplus(weight)) + bias
 
 
-# %%
 def SinusoidalPosEmb(dim, x):
     x = x.squeeze() * 1000
     assert len(x.shape) == 1
@@ -198,7 +192,6 @@ def SinusoidalPosEmb(dim, x):
     return emb
 
 
-# %%
 def predefined_noise_schedule(noise_schedule, timesteps, precision):
     if noise_schedule == "cosine":
         alphas2 = cosine_beta_schedule(timesteps)
@@ -229,20 +222,6 @@ def predefined_noise_forward(gamma, t, timesteps):
     return gamma[t_int]
 
 
-# %%
-class GammaNetwork(nn.Module):
-    @nn.compact
-    def __call__(self, inputs):
-        # out_features: int
-        # use_bias: bool = True
-        # weight_init_offset = -2
-        # dtype = jnp.float32
-
-        l1 = PositiveLinear(out_features=1)
-        l2 = PositiveLinear(out_features=1024)
-        l3 = PositiveLinear(out_features=1)
-
-
 class GammaNetwork(nn.Module):
     def setup(self):
         super().__init__()
@@ -264,6 +243,7 @@ class GammaNetwork(nn.Module):
     #     gamma = self.forward(t)
     #     print("Gamma schedule:")
     #     print(gamma)
+
     def gamma_tilde(self, t):
         l1_t = self.l1(t)
         return l1_t + self.l3(jax.nn.sigmoid(self.l2(l1_t)))
@@ -298,8 +278,6 @@ def cdf_standard_gaussian(x):
 
 
 # Harold and Robin part
-
-
 class EnVariationalDiffusion(nn.Module):
     """
     The E(n) Diffusion Module in JAX.

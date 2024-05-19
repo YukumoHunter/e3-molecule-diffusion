@@ -1,5 +1,5 @@
 # Equivariant Diffusion for Molecule Generation in 3D
-## Archelaos Chalkiadakis, Harold Ruiter, Marina Orozco Gonz alez, Ricardo Ch avez Torres, Robin Reitsma
+## Archelaos Chalkiadakis, Harold Ruiter, Marina Orozco Gonzalez, Ricardo Chavez Torres, Robin Reitsma
 
 The main objectives of our project are:
 1. Do a thorough review of the current literature on geometric deep learning

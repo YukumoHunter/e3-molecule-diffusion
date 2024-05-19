@@ -9,9 +9,49 @@ import utils
 import qm9.utils as qm9utils
 from qm9 import losses
 import time
+import tqdm
 import torch
 
-# I removed model_dp and device
+import jax
+import jax.numpy as jnp
+import optax
+
+#ME
+def calculate_loss_acc(state, params, batch):
+    data_input, labels = batch
+    # Obtain the logits and predictions of the model for the input data
+    logits = state.apply_fn(params, data_input).squeeze(axis=-1)
+    pred_labels = (logits > 0).astype(jnp.float32)
+    # Calculate the loss and accuracy
+    loss = optax.sigmoid_binary_cross_entropy(logits, labels).mean()
+    acc = (pred_labels == labels).mean()
+    return loss, acc
+
+@jax.jit  # Jit the function for efficiency
+def train_step(state, batch):
+    # Gradient function
+    grad_fn = jax.value_and_grad(calculate_loss_acc,  # Function to calculate the loss
+                                 argnums=1,  # Parameters are second argument of the function
+                                 has_aux=True  # Function has additional outputs, here accuracy
+                                )
+    # Determine gradients for current model, parameters and batch
+    (loss, acc), grads = grad_fn(state, state.params, batch)
+    # Perform parameter update with gradients and optimizer
+    state = state.apply_gradients(grads=grads)
+    # Return state and any other value we might want
+    return state, loss, acc
+
+def train_epoch(state, data_loader, num_epochs=100):
+    # Training loop
+    for epoch in tqdm(range(num_epochs)):
+        for batch in data_loader:
+            state, loss, acc = train_step(state, batch)
+            # We could use the loss and accuracy for logging here, e.g. in TensorBoard
+            # For simplicity, we skip this part here
+    return state
+
+#ORIGINAL
+# I removed device
 def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, dtype, property_norms, optim,
                 nodes_dist, gradnorm_queue, dataset_info, prop_dist):
     model.train()

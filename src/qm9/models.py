@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-import jax.experimental.optimizers as optimizers
+import optax
 import jax.random as random
 from torch.distributions.categorical import Categorical
 
@@ -10,8 +10,8 @@ from equivariant_diffusion.en_diffusion import EnVariationalDiffusion
 
 
 def get_model(args, device, dataset_info, dataloader_train):
-    histogram = dataset_info['n_nodes']
-    in_node_nf = len(dataset_info['atom_decoder']) + int(args.include_charges)
+    histogram = dataset_info["n_nodes"]
+    in_node_nf = len(dataset_info["atom_decoder"]) + int(args.include_charges)
     nodes_dist = DistributionNodes(histogram)
 
     prop_dist = None
@@ -21,18 +21,28 @@ def get_model(args, device, dataset_info, dataloader_train):
     if args.condition_time:
         dynamics_in_node_nf = in_node_nf + 1
     else:
-        print('Warning: dynamics model is _not_ conditioned on time.')
+        print("Warning: dynamics model is _not_ conditioned on time.")
         dynamics_in_node_nf = in_node_nf
 
     net_dynamics = EGNN_dynamics_QM9(
-        in_node_nf=dynamics_in_node_nf, context_node_nf=args.context_node_nf,
-        n_dims=3, device=device, hidden_nf=args.nf,
-        act_fn=jnp.nn.SiLU(), n_layers=args.n_layers,
-        attention=args.attention, tanh=args.tanh, mode=args.model, norm_constant=args.norm_constant,
-        inv_sublayers=args.inv_sublayers, sin_embedding=args.sin_embedding,
-        normalization_factor=args.normalization_factor, aggregation_method=args.aggregation_method)
+        in_node_nf=dynamics_in_node_nf,
+        context_node_nf=args.context_node_nf,
+        n_dims=3,
+        device=device,
+        hidden_nf=args.nf,
+        act_fn=jnp.nn.SiLU(),
+        n_layers=args.n_layers,
+        attention=args.attention,
+        tanh=args.tanh,
+        mode=args.model,
+        norm_constant=args.norm_constant,
+        inv_sublayers=args.inv_sublayers,
+        sin_embedding=args.sin_embedding,
+        normalization_factor=args.normalization_factor,
+        aggregation_method=args.aggregation_method,
+    )
 
-    if args.probabilistic_model == 'diffusion':
+    if args.probabilistic_model == "diffusion":
         vdm = EnVariationalDiffusion(
             dynamics=net_dynamics,
             in_node_nf=in_node_nf,
@@ -42,8 +52,8 @@ def get_model(args, device, dataset_info, dataloader_train):
             noise_precision=args.diffusion_noise_precision,
             loss_type=args.diffusion_loss_type,
             norm_values=args.normalize_factors,
-            include_charges=args.include_charges
-            )
+            include_charges=args.include_charges,
+        )
 
         return vdm, nodes_dist, prop_dist
 
@@ -52,14 +62,13 @@ def get_model(args, device, dataset_info, dataloader_train):
 
 
 def get_optim(args, generative_model):
-    optimizer = optimizers.adamw(learning_rate=args.lr, b1=0.9, b2=0.999, eps=1e-8, weight_decay=1e-12)
+    optimizer = optax.adamw(learning_rate=args.lr, weight_decay=1e-12)
 
     return optimizer
 
 
 class DistributionNodes:
     def __init__(self, histogram):
-
         self.n_nodes = []
         prob = []
         self.keys = {}
@@ -69,7 +78,7 @@ class DistributionNodes:
             prob.append(histogram[nodes])
         self.n_nodes = jnp.array(self.n_nodes)
         prob = np.array(prob)
-        prob = prob/np.sum(prob)
+        prob = prob / np.sum(prob)
 
         self.prob = jnp.array(prob).astype(jnp.float32)
 
@@ -104,9 +113,11 @@ class DistributionProperty:
         self.properties = properties
         for prop in properties:
             self.distributions[prop] = {}
-            self._create_prob_dist(dataloader.dataset.data['num_atoms'],
-                                   dataloader.dataset.data[prop],
-                                   self.distributions[prop])
+            self._create_prob_dist(
+                dataloader.dataset.data["num_atoms"],
+                dataloader.dataset.data[prop],
+                self.distributions[prop],
+            )
 
         self.normalizer = normalizer
 
@@ -120,15 +131,15 @@ class DistributionProperty:
             values_filtered = values[idxs]
             if len(values_filtered) > 0:
                 probs, params = self._create_prob_given_nodes(values_filtered)
-                distribution[n_nodes] = {'probs': probs, 'params': params}
+                distribution[n_nodes] = {"probs": probs, "params": params}
 
     def _create_prob_given_nodes(self, values):
-        n_bins = self.num_bins #min(self.num_bins, len(values))
+        n_bins = self.num_bins  # min(self.num_bins, len(values))
         prop_min, prop_max = jnp.min(values), jnp.max(values)
         prop_range = prop_max - prop_min + 1e-12
         histogram = jnp.zeros(n_bins)
         for val in values:
-            i = int((val - prop_min)/prop_range * n_bins)
+            i = int((val - prop_min) / prop_range * n_bins)
             # Because of numerical precision, one sample can fall in bin int(n_bins) instead of int(n_bins-1)
             # We move it to bin int(n_bind-1 if tat happens)
             if i == n_bins:
@@ -141,16 +152,16 @@ class DistributionProperty:
 
     def normalize_tensor(self, tensor, prop):
         assert self.normalizer is not None
-        mean = self.normalizer[prop]['mean']
-        mad = self.normalizer[prop]['mad']
+        mean = self.normalizer[prop]["mean"]
+        mad = self.normalizer[prop]["mad"]
         return (tensor - mean) / mad
 
     def sample(self, n_nodes=19):
         vals = []
         for prop in self.properties:
             dist = self.distributions[prop][n_nodes]
-            idx = dist['probs'].sample((1,))
-            val = self._idx2value(idx, dist['params'], len(dist['probs'].probs))
+            idx = dist["probs"].sample((1,))
+            val = self._idx2value(idx, dist["params"], len(dist["probs"].probs))
             val = self.normalize_tensor(val, prop)
             vals.append(val)
         vals = jnp.concatenate(vals)
@@ -171,8 +182,7 @@ class DistributionProperty:
         return val
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     dist_nodes = DistributionNodes()
     print(dist_nodes.n_nodes)
     print(dist_nodes.prob)

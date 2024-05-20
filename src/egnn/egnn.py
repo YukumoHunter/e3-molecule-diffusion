@@ -2,7 +2,28 @@ import jax
 import jax.numpy as jnp
 import flax.linen as nn
 
-from utils.jax import segment_mean, compute_radial
+
+def segment_mean(data, segment_ids, num_segments):
+    """
+    Computes the mean within segments of an array.
+    """
+    # Sum the data within each segment
+    segment_sums = jax.ops.segment_sum(data, segment_ids, num_segments)
+    # Compute the size of each segment
+    segment_sizes = jax.ops.segment_sum(jnp.ones_like(data), segment_ids, num_segments)
+    segment_means = segment_sums / segment_sizes
+    return segment_means
+
+
+def compute_radial(edge_index, x):
+    """
+    Compute x_i - x_j and ||x_i - x_j||^2.
+    """
+    senders, receivers = edge_index
+    x_i, x_j = x[senders], x[receivers]
+    distance = jnp.sum((x_i - x_j) ** 2, axis=1, keepdims=True)
+    return distance
+
 
 def custom_xavier_uniform_init(gain=0.001):
     """
@@ -29,12 +50,7 @@ def build_fn(hidden_dim, act_fn):
         Message: m_ij = phi_e(h_i^l, h_j^l, ||x_i^l - x_j^l||^2, a_ij)
         """
         phi_e = nn.Sequential(
-            [
-                nn.Dense(hidden_dim), 
-                act_fn, 
-                nn.Dense(hidden_dim), 
-                act_fn
-            ]
+            [nn.Dense(hidden_dim), act_fn, nn.Dense(hidden_dim), act_fn]
         )
 
         senders, receivers = edge_index
@@ -49,13 +65,7 @@ def build_fn(hidden_dim, act_fn):
 
         Node update: h_i^{l+1} = phi_h(h_i^l, m_i)
         """
-        phi_h = nn.Sequential(
-            [
-                nn.Dense(hidden_dim), 
-                act_fn, 
-                nn.Dense(hidden_dim)
-                ]
-        )
+        phi_h = nn.Sequential([nn.Dense(hidden_dim), act_fn, nn.Dense(hidden_dim)])
 
         senders, _ = edge_index
         m_i = jax.ops.segment_sum(m_ij, senders, num_segments=h_i.shape[0])
@@ -111,7 +121,6 @@ class EGNN(nn.Module):
 
     @nn.compact
     def __call__(self, edge_index, h, x, edge_attr):
-
         h = nn.Dense(self.hidden_dim)(h)
 
         for _ in range(self.num_layers):

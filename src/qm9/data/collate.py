@@ -1,33 +1,36 @@
+import torch
+import numpy as np
+
 import jax
 import jax.numpy as jnp
 
 
 def batch_stack(props):
     """
-    Stack a list of jax.numpy arrays so they are padded to the size of the
-    largest array along each axis.
+    Stack a list of torch.tensors so they are padded to the size of the
+    largest tensor along each axis.
 
     Parameters
     ----------
-    props : list of jax.numpy arrays
-        jax.numpy arrays to stack
+    props : list of Pytorch Tensors
+        Pytorch tensors to stack
 
     Returns
     -------
-    props : jax.numpy array
-        Stacked jax.numpy array.
+    props : Pytorch tensor
+        Stacked pytorch tensor.
 
     Notes
     -----
-    TODO : Review whether the behavior when elements are not arrays is safe.
+    TODO : Review whether the behavior when elements are not tensors is safe.
     """
     if not isinstance(props[0], jnp.ndarray):
         return jnp.array(props)
-    elif props[0].ndim == 0:
+    elif jnp.ndim(props[0]) == 0:
         return jnp.stack(props)
     else:
-        return jax.nn.pad(
-            props, [(0, 0)] * (props[0].ndim - 1) + [(0, 0)], constant_values=0
+        return torch.nn.utils.rnn.pad_sequence(
+            torch.tensor(np.asarray(props)), batch_first=True, padding_value=0
         )
 
 
@@ -94,7 +97,9 @@ class PreprocessQM9:
 
         # Obtain edges
         batch_size, n_nodes = atom_mask.shape
-        edge_mask = atom_mask[:, :, jnp.newaxis] * atom_mask[:, jnp.newaxis, :]
+        edge_mask = jnp.array(
+            atom_mask[:, :, jnp.newaxis] * atom_mask[:, jnp.newaxis, :]
+        )
 
         # mask diagonal
         diag_mask = ~jnp.eye(edge_mask.shape[1], dtype=jnp.bool_)[jnp.newaxis, ...]

@@ -223,7 +223,7 @@ def get_unique_charges(charges):
     """
     # Create a dictionary of charges
     charge_counts = {
-        z: np.zeros(len(charges), dtype=np.int) for z in np.unique(charges)
+        z: np.zeros(len(charges), dtype=np.int32) for z in np.unique(charges)
     }
     print(charge_counts.keys())
 

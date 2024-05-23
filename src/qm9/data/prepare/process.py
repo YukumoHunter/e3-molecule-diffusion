@@ -1,37 +1,10 @@
 import logging
 import os
-import jax.numpy as jnp
+import torch
 import tarfile
+from torch.nn.utils.rnn import pad_sequence
 
 charge_dict = {"H": 1, "C": 6, "N": 7, "O": 8, "F": 9}
-
-
-def pad_sequence(sequences, batch_first=False, padding_value=0.0):
-    if batch_first:
-        # Transpose sequences to have batch dimension first
-        sequences = [jnp.array(seq) for seq in sequences]
-    else:
-        # Transpose sequences to have time dimension first
-        sequences = [jnp.array(seq).T for seq in sequences]
-
-    # Find the maximum length of sequences
-    max_length = max(len(seq) for seq in sequences)
-
-    # Create a mask to mark which elements are padded
-    mask = jnp.array(
-        [[1.0] * len(seq) + [0.0] * (max_length - len(seq)) for seq in sequences]
-    )
-
-    # Pad sequences with the padding value
-    padded_sequences = [
-        seq + [padding_value] * (max_length - len(seq)) for seq in sequences
-    ]
-
-    # Transpose back if batch_first is False
-    if not batch_first:
-        padded_sequences = [jnp.array(seq).T for seq in padded_sequences]
-
-    return jnp.array(padded_sequences)
 
 
 def split_dataset(data, split_idxs):
@@ -128,16 +101,12 @@ def process_xyz_files(
     # Convert list-of-dicts to dict-of-lists
     molecules = {prop: [mol[prop] for mol in molecules] for prop in props}
 
-    # print(type(next(iter(molecules.values()))))
-
-    # exit()
-
     # If stacking is desireable, pad and then stack.
     if stack:
         molecules = {
             key: pad_sequence(val, batch_first=True)
-            if jnp.ndim(val[0]) > 0
-            else jnp.stack(val)
+            if val[0].dim() > 0
+            else torch.stack(val)
             for key, val in molecules.items()
         }
 
@@ -164,11 +133,11 @@ def process_xyz_md17(datafile):
     atom_positions = []
     atom_types = []
     for line in xyz_lines:
-        if line[0] is "#":
+        if line[0] == "#":
             continue
-        if line_counter is 0:
+        if line_counter == 0:
             num_atoms = int(line)
-        elif line_counter is 1:
+        elif line_counter == 1:
             split = line.split(";")
             assert (
                 len(split) == 1 or len(split) == 2
@@ -185,7 +154,7 @@ def process_xyz_md17(datafile):
                 ]
         else:
             split = line.split()
-            if len(split) is 4:
+            if len(split) == 4:
                 type, x, y, z = split
                 atom_types.append(split[0])
                 atom_positions.append([float(x) for x in split[1:]])
@@ -203,7 +172,7 @@ def process_xyz_md17(datafile):
         "positions": atom_positions,
     }
 
-    molecule = {key: val for key, val in molecule.items()}
+    molecule = {key: torch.tensor(val) for key, val in molecule.items()}
 
     return molecule
 
@@ -269,6 +238,6 @@ def process_xyz_gdb9(datafile):
         "positions": atom_positions,
     }
     molecule.update(mol_props)
-    molecule = {key: val for key, val in molecule.items()}
+    molecule = {key: torch.tensor(val) for key, val in molecule.items()}
 
     return molecule

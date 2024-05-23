@@ -9,9 +9,16 @@ from qm9.data.dataset_class import ProcessedDataset
 from qm9.data.prepare import prepare_dataset
 
 
-def initialize_datasets(args, datadir, dataset, subset=None, splits=None,
-                        force_download=False, subtract_thermo=False,
-                        remove_h=False):
+def initialize_datasets(
+    args,
+    datadir,
+    dataset,
+    subset=None,
+    splits=None,
+    force_download=False,
+    subtract_thermo=False,
+    remove_h=False,
+):
     """
     Initialize datasets.
 
@@ -52,12 +59,12 @@ def initialize_datasets(args, datadir, dataset, subset=None, splits=None,
     TODO: Delete the splits argument.
     """
     # Set the number of points based upon the arguments
-    num_pts = {'train': args.num_train,
-               'test': args.num_test, 'valid': args.num_valid}
+    num_pts = {"train": args.num_train, "test": args.num_test, "valid": args.num_valid}
 
     # Download and process dataset. Returns datafiles.
     datafiles = prepare_dataset(
-        datadir, 'qm9', subset, splits, force_download=force_download)
+        datadir, "qm9", subset, splits, force_download=force_download
+    )
 
     # Load downloaded/processed datasets
     datasets = {}
@@ -65,70 +72,80 @@ def initialize_datasets(args, datadir, dataset, subset=None, splits=None,
         with np.load(datafile) as f:
             datasets[split] = {key: jnp.array(val) for key, val in f.items()}
 
-    if dataset != 'qm9':
+    if dataset != "qm9":
         np.random.seed(42)
-        fixed_perm = np.random.permutation(len(datasets['train']['num_atoms']))
-        if dataset == 'qm9_second_half':
-            sliced_perm = fixed_perm[len(datasets['train']['num_atoms'])//2:]
-        elif dataset == 'qm9_first_half':
-            sliced_perm = fixed_perm[0:len(datasets['train']['num_atoms']) // 2]
+        fixed_perm = np.random.permutation(len(datasets["train"]["num_atoms"]))
+        if dataset == "qm9_second_half":
+            sliced_perm = fixed_perm[len(datasets["train"]["num_atoms"]) // 2 :]
+        elif dataset == "qm9_first_half":
+            sliced_perm = fixed_perm[0 : len(datasets["train"]["num_atoms"]) // 2]
         else:
-            raise Exception('Wrong dataset name')
-        for key in datasets['train']:
-            datasets['train'][key] = datasets['train'][key][sliced_perm]
+            raise Exception("Wrong dataset name")
+        for key in datasets["train"]:
+            datasets["train"][key] = datasets["train"][key][sliced_perm]
 
     # Basic error checking: Check the training/test/validation splits have the same set of keys.
     keys = [list(data.keys()) for data in datasets.values()]
-    assert all([key == keys[0] for key in keys]
-               ), 'Datasets must have same set of keys!'
+    assert all([key == keys[0] for key in keys]), "Datasets must have same set of keys!"
 
     # TODO: remove hydrogens here if needed
     if remove_h:
         for key, dataset in datasets.items():
-            pos = dataset['positions']
-            charges = dataset['charges']
-            num_atoms = dataset['num_atoms']
+            pos = dataset["positions"]
+            charges = dataset["charges"]
+            num_atoms = dataset["num_atoms"]
 
             # Check that charges corresponds to real atoms
             assert jnp.sum(num_atoms != jnp.sum(charges > 0, axis=1)) == 0
 
-            mask = dataset['charges'] > 1
+            mask = dataset["charges"] > 1
             new_positions = jnp.zeros_like(pos)
             new_charges = jnp.zeros_like(charges)
             for i in range(new_positions.shape[0]):
                 m = mask[i]
-                p = pos[i][m]   # positions to keep
-                p = p - jnp.mean(p, axis=0)    # Center the new positions
-                c = charges[i][m]   # Charges to keep
+                p = pos[i][m]  # positions to keep
+                p = p - jnp.mean(p, axis=0)  # Center the new positions
+                c = charges[i][m]  # Charges to keep
                 n = jnp.sum(m)
                 new_positions[i, :n, :] = p
                 new_charges[i, :n] = c
 
-            dataset['positions'] = new_positions
-            dataset['charges'] = new_charges
-            dataset['num_atoms'] = jnp.sum(dataset['charges'] > 0, axis=1)
+            dataset["positions"] = new_positions
+            dataset["charges"] = new_charges
+            dataset["num_atoms"] = jnp.sum(dataset["charges"] > 0, axis=1)
 
     # Get a list of all species across the entire dataset
     all_species = _get_species(datasets, ignore_check=False)
 
     # Now initialize MolecularDataset based upon loaded data
-    datasets = {split: ProcessedDataset(data, num_pts=num_pts.get(
-        split, -1), included_species=all_species, subtract_thermo=subtract_thermo) for split, data in datasets.items()}
+    datasets = {
+        split: ProcessedDataset(
+            data,
+            num_pts=num_pts.get(split, -1),
+            included_species=all_species,
+            subtract_thermo=subtract_thermo,
+        )
+        for split, data in datasets.items()
+    }
 
     # Now initialize MolecularDataset based upon loaded data
 
     # Check that all datasets have the same included species:
-    assert(len(set(tuple(data.included_species.tolist()) for data in datasets.values())) ==
-           1), 'All datasets must have same included_species! {}'.format({key: data.included_species for key, data in datasets.items()})
+    assert (
+        len(set(tuple(data.included_species.tolist()) for data in datasets.values()))
+        == 1
+    ), "All datasets must have same included_species! {}".format(
+        {key: data.included_species for key, data in datasets.items()}
+    )
 
     # These parameters are necessary to initialize the network
-    num_species = datasets['train'].num_species
-    max_charge = datasets['train'].max_charge
+    num_species = datasets["train"].num_species
+    max_charge = datasets["train"].max_charge
 
     # Now, update the number of training/test/validation sets in args
-    args.num_train = datasets['train'].num_pts
-    args.num_valid = datasets['valid'].num_pts
-    args.num_test = datasets['test'].num_pts
+    args.num_train = datasets["train"].num_pts
+    args.num_valid = datasets["valid"].num_pts
+    args.num_test = datasets["test"].num_pts
 
     return args, datasets, num_species, max_charge
 
@@ -154,31 +171,39 @@ def _get_species(datasets, ignore_check=False):
 
     """
     # Get a list of all species in the dataset across all splits
-    all_species = jnp.unique(jnp.concatenate([jnp.unique(dataset['charges'])
-                                          for dataset in datasets.values()]),
-                         sorted=True)
+    all_species = jnp.sort(
+        jnp.unique(
+            jnp.concatenate(
+                [jnp.unique(dataset["charges"]) for dataset in datasets.values()]
+            ),
+        )
+    )
 
     # Find the unique list of species in each dataset.
-    split_species = {split: species['charges'].unique(
-        sorted=True) for split, species in datasets.items()}
+    split_species = {
+        split: jnp.sort(jnp.unique(species["charges"]))
+        for split, species in datasets.items()
+    }
 
     # If zero charges (padded, non-existent atoms) are included, remove them
     if all_species[0] == 0:
         all_species = all_species[1:]
 
     # Remove zeros if zero-padded charges exst for each split
-    split_species = {split: species[1:] if species[0] ==
-                     0 else species for split, species in split_species.items()}
+    split_species = {
+        split: species[1:] if species[0] == 0 else species
+        for split, species in split_species.items()
+    }
 
     # Now check that each split has at least one example of every atomic spcies from the entire dataset.
-    if not all([split.tolist() == all_species.tolist() for split in split_species.values()]):
+    if not all(
+        [split.tolist() == all_species.tolist() for split in split_species.values()]
+    ):
         # Allows one to override this check if they really want to. Not recommended as the answers become non-sensical.
         if ignore_check:
-            logging.error(
-                'The number of species is not the same in all datasets!')
+            logging.error("The number of species is not the same in all datasets!")
         else:
-            raise ValueError(
-                'Not all datasets have the same number of species!')
+            raise ValueError("Not all datasets have the same number of species!")
 
     # Finally, return a list of all species
     return all_species

@@ -1,7 +1,7 @@
+import jax
 import jax.numpy as jnp
 import optax
 import jax.random as random
-from torch.distributions.categorical import Categorical
 
 import numpy as np
 from egnn.models import EGNN_dynamics_QM9
@@ -9,10 +9,10 @@ from egnn.models import EGNN_dynamics_QM9
 from equivariant_diffusion.en_diffusion import EnVariationalDiffusion
 
 
-def get_model(args, device, dataset_info, dataloader_train):
+def get_model(rng_key, args, dataset_info, dataloader_train):
     histogram = dataset_info["n_nodes"]
     in_node_nf = len(dataset_info["atom_decoder"]) + int(args.include_charges)
-    nodes_dist = DistributionNodes(histogram)
+    nodes_dist = DistributionNodes(histogram, rng_key)
 
     prop_dist = None
     if len(args.conditioning) > 0:
@@ -28,9 +28,8 @@ def get_model(args, device, dataset_info, dataloader_train):
         in_node_nf=dynamics_in_node_nf,
         context_node_nf=args.context_node_nf,
         n_dims=3,
-        device=device,
         hidden_nf=args.nf,
-        act_fn=jnp.nn.SiLU(),
+        act_fn=jax.nn.silu,
         n_layers=args.n_layers,
         attention=args.attention,
         tanh=args.tanh,
@@ -68,7 +67,7 @@ def get_optim(args, generative_model):
 
 
 class DistributionNodes:
-    def __init__(self, histogram):
+    def __init__(self, histogram, rng_key):
         self.n_nodes = []
         prob = []
         self.keys = {}
@@ -77,15 +76,18 @@ class DistributionNodes:
             self.keys[nodes] = i
             prob.append(histogram[nodes])
         self.n_nodes = jnp.array(self.n_nodes)
-        prob = np.array(prob)
-        prob = prob / np.sum(prob)
 
-        self.prob = jnp.array(prob).astype(jnp.float32)
+        prob = jnp.array(prob)
+        prob = prob / jnp.sum(prob)
+
+        self.prob = prob.astype(jnp.float32)
 
         entropy = jnp.sum(self.prob * jnp.log(self.prob + 1e-30))
         print("Entropy of n_nodes: H[N]", entropy.item())
 
-        self.m = Categorical(jnp.array(prob))
+        key, subkey = random.split(rng_key)
+
+        self.m = random.categorical(key=subkey, logits=prob)
 
     def sample(self, n_samples=1):
         idx = self.m.sample((n_samples,))
@@ -133,7 +135,7 @@ class DistributionProperty:
                 probs, params = self._create_prob_given_nodes(values_filtered)
                 distribution[n_nodes] = {"probs": probs, "params": params}
 
-    def _create_prob_given_nodes(self, values):
+    def _create_prob_given_nodes(self, rng_key, values):
         n_bins = self.num_bins  # min(self.num_bins, len(values))
         prop_min, prop_max = jnp.min(values), jnp.max(values)
         prop_range = prop_max - prop_min + 1e-12
@@ -146,7 +148,10 @@ class DistributionProperty:
                 i = n_bins - 1
             histogram[i] += 1
         probs = histogram / jnp.sum(histogram)
-        probs = Categorical(jnp.array(probs))
+
+        key, subkey = random.split(rng_key)
+
+        probs = random.categorical(key=subkey, logits=probs)
         params = [prop_min, prop_max]
         return probs, params
 

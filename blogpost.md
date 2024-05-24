@@ -17,22 +17,22 @@ Generating 3D molecular structures that are both chemically valid and physically
 ![Generated molecule from the original model](imgs_blogpost\gen_molecule.png)
 
 ### Section 1.2: Motivation
-The discovery of novel molecules is a crucial step in the development of new products that can be used for drug discovery for the treatment of complex diseases, developing material science and other molecular design related fields.  But finding new chemical compounds with desired properties is a challenging task, as the space of synthesizable molecules is vast and sear in it proves to be very difficult, mostly owing to its discrete nature (Cao and Kipf, 2022). Although conventional molecular design involves the use of human expertise to propose, synthesize and test new molecules, this process can be cost and time intensive, limiting the number and diversity of molecules that can be reasonably explored (Bilodeau et al., 2022). In deed, it has been estimated that the number of compounds that have ever been synthesized lies around $10^8$ while the total number of theoretically feasible compounds lies between $10^{23}$ and $10^{60}$ (Polishchuk et al., 2013).
+The discovery of novel molecules is a crucial step in the development of new products that can be used for drug discovery for the treatment of complex diseases, developing material science and other molecular design related fields.  But finding new chemical compounds with desired properties is a challenging task, as the space of synthesizable molecules is vast and sear in it proves to be very difficult, mostly owing to its discrete nature [(Cao and Kipf, 2022)$ ^{[1]}$](#1--cao-n-d-and-kipf-t-2022-molgan-an-implicit-generative-model-for-small-molecular-graphs). Although conventional molecular design involves the use of human expertise to propose, synthesize and test new molecules, this process can be cost and time intensive, limiting the number and diversity of molecules that can be reasonably explored [(Bilodeau et al., 2022)$ ^{[2]}$](#2--bilodeau-c-jin-w-jaakkola-t-barzilay-r-and-jensen-k-f-2022-generative-models-for-molecular-discovery-recent-advances-and-challenges-wires-computational-molecular-science-125e1608). In deed, it has been estimated that the number of compounds that have ever been synthesized lies around $10^8$ while the total number of theoretically feasible compounds lies between $10^{23}$ and $10^{60}$ (Polishchuk et al., 2013).
 
-In light of this situation, modern deep learning techniques provides an alternative and more efficient approach to achieve this through generative models. There are two characteristics of deep learning that makes it particularly promising when applied to molecules: First, they can cope with “unstructured” data representations such as text sequences, speech signals, images and graphs. Second, deep learning can perform feature extraction from the input data, that is, produce data-driven features from the input data without the need for manual intervention ([Atz et al., 2021](https://arxiv.org/pdf/2107.12375)).
+In light of this situation, modern deep learning techniques provides an alternative and more efficient approach to achieve this through generative models. There are two characteristics of deep learning that makes it particularly promising when applied to molecules: First, they can cope with “unstructured” data representations such as text sequences, speech signals, images and graphs. Second, deep learning can perform feature extraction from the input data, that is, produce data-driven features from the input data without the need for manual intervention [(Atz et al., 2021)$ ^{[3]}$](#3--kenneth-atz-and-francesca-grisoni-and-gisbert-schneider-2021-ggeometric-deep-learning-on-molecular-representations)
 
 ## Section 2: Keypoints
 ### Section 2.1: Introduction to Graphs
-Concerning the use of deep learning techniques for molecules generation, according with Maziarz et al. (2022), early approaches relied on the textual SMILES representation and on the reuse of architectures from natural language processing. 
+Concerning the use of deep learning techniques for molecules generation, according with [(Maziarz et al., 2022)$ ^{[4]}$](#4--maziarz-k-jackson-flux-h-cameron-p-sirockin-f-schneider-n-stiefl-n-segler-m-and-brockschmidt-m-2022-learning-to-extend-molecular-scaffolds-with-structural-motifs), early approaches relied on the textual SMILES representation and on the reuse of architectures from natural language processing. 
 
-However, since 2018 we can observe the use of **Graph Neural Networks (GNN)** for this goal, as stated in Cao and Kipf (2022), due to the great improvements that were made on graphs in the area of deep learning during 2017 (Bronstein et al., 2017). Using graphs is convenient for this goal as this representation is able to encapsulate crucial structural information for molecules generation. Moreover, is has the benefit that all generated outputs are valid graphs (but not necessarily valid molecules).
+However, since 2018 we can observe the use of **Graph Neural Networks (GNN)** for this goal, as stated in [(Cao and Kipf, 2022)$ ^{[1]}$](#1--cao-n-d-and-kipf-t-2022-molgan-an-implicit-generative-model-for-small-molecular-graphs), due to the great improvements that were made on graphs in the area of deep learning during 2017 [(Bronstein et al., 2017)$^{[5]}$](#5-bronstein-m-m-bruna-j-lecun-y-szlam-a-and-vandergheynst-p-2017-geometric-deep-learning-going-beyond-euclidean-data-ieee-signal-processing-magazine-3441842). Using graphs is convenient for this goal as this representation is able to encapsulate crucial structural information for molecules generation. Moreover, is has the benefit that all generated outputs are valid graphs (but not necessarily valid molecules).
 
 ![Exemplary molecular representations for a selected molecule a. Two-dimensional depiction b. Molecular graph (2D) composed of vertices (atoms) and edges (bonds). (Atz et al., 2021)](imgs_blogpost\graph_mol.png)
 
 ### Section 2.2: Introduction to  Diffusion Models
-As we said, the paper we used as baseline, Hoogeboom et al. (2022), combines the use of **GNN** with ****Diffusion Models (DMs)**,** standing as the first Diffusion Model that generates molecules in 3D space. 
+As we said, the paper we used as baseline, [Hoogeboom et al. (2022)$^{[6]}$](#6-hoogeboom-e-satorras-v-g-vignac-c-and-welling-m-2022-equivariant-diffusion-for-molecule-generation-in-3d)), combines the use of **GNN** with **Diffusion Models (DMs)**, standing as the first Diffusion Model that generates molecules in 3D space. 
 
-The use of Diffusion Models have gained more attention since the introduction of the Diffusion Probabilistic Models (DPMs) framework by Dhariwal and Nichol (2021) in 2020. They have shown remarkable success in generating high-quality data across various domains, including image synthesis and audio generation. 
+The use of Diffusion Models have gained more attention since the introduction of the Diffusion Probabilistic Models (DPMs) framework by [Dhariwal and Nichol (2021)$^{[7]}$](#7-dhariwal-p-and-nichol-a-2021-diffusion-models-beat-gans-on-image-synthesis) in 2020. They have shown remarkable success in generating high-quality data across various domains, including image synthesis and audio generation. 
 
 These models operate by iteratively denoising a sample starting from pure noise, guided by a learned probability distribution that captures the underlying structure of the target data. 
 
@@ -59,7 +59,7 @@ In this work interactions between all atoms are considered and model through a f
 
 The EGNN architecture is composed of L EGCL layers wich applies the non-linear transformation:
 
-$$ \hat{\mathbf{x}}_h, \hat{\mathbf{h}} = EGNN[\mathbf{x}^0, \mathbf{h}^0 ]$$
+$$ \hat{\mathbf{x}}_h, \hat{\mathbf{h}} = EGNN[\mathbf{x}^0, \mathbf{h}^0 ] $$ \label{} 
 
 Which satisfies the required equivariant property we saw before in \ref{nosé}.
 
@@ -103,3 +103,20 @@ Our re-implementation in JAX/FLAX aims to further enhance the model’s efficien
 - **Marina**:
 - **Ric**:
 - **Alkis**:
+
+## References
+#### [1]  Cao, N. D. and Kipf, T. (2022). Molgan: An implicit generative model for small molecular graphs.
+
+#### [2]  Bilodeau, C., Jin, W., Jaakkola, T., Barzilay, R., and Jensen, K. F. (2022). Generative models for molecular discovery: Recent advances and challenges.
+
+
+#### [3]  Kenneth Atz and Francesca Grisoni and Gisbert Schneider (2021). GGeometric Deep Learning on Molecular Representations. 
+
+
+#### [4]  Maziarz, K., Jackson-Flux, H., Cameron, P., Sirockin, F., Schneider, N., Stiefl, N., Segler, M., and Brockschmidt, M. (2022). Learning to extend molecular scaffolds with structural motifs.
+
+#### [5] Bronstein, M. M., Bruna, J., LeCun, Y., Szlam, A., and Vandergheynst, P. (2017). Geometric deep learning: Going beyond euclidean data. IEEE Signal Processing Magazine, 34(4):18–42.
+
+#### [6] Hoogeboom, E., Satorras, V. G., Vignac, C., and Welling, M. (2022). Equivariant diffusion for molecule generation in 3d.
+
+#### [7] Dhariwal, P. and Nichol, A. (2021). Diffusion models beat gans on image synthesis

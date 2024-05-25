@@ -65,15 +65,201 @@ Which satisfies the required equivariant property we saw before in \ref{nosé}.
 
 ### Section 2.5: Introduction to JAX
 #### Section 2.5.1: JAX
-Hola buenas 
+
+JAX is an open-source library for numerical computing that combines automatic differentiation with the capability to run code on GPUs and TPUs. Created by Google Research, JAX serves as a high-performance alternative to PyTorch and NumPy, enhanced by gradient-based optimization and just-in-time compilation.
+
+JAX's key features make it particularly effective for machine learning:
+
+1. **NumPy Compatibility:** JAX’s API is very similar to NumPy’s, making it easy for users to switch. Functions in JAX have the same names and signatures as those in NumPy.
+2. **Automatic Differentiation:** JAX includes powerful tools for automatic differentiation. The 'grad' function helps compute gradients of scalar-valued functions, and the 'vjp' and 'jvp' functions handle Jacobian-vector and vector-Jacobian products.
+3. **Accelerator Support:** JAX code can run on CPUs, GPUs, and TPUs with few changes, offering great versatility.
+4. **Composable Function Transformations:** JAX supports composable transformations like 'grad' for gradients, 'jit' for just-in-time compilation, 'vmap' for vectorization, and 'pmap' for parallelization across devices.
 
 #### Section 2.5.2: JIT paradigm
-Hola buenas 
+Just-In-Time (JIT) compilation is a standout feature in JAX. It optimizes code by converting Python functions into efficient machine code, which can be run on accelerators.
+
+- **JIT Usage:** In JAX, the '@jit' decorator marks functions for JIT compilation. When used, JAX employs the XLA compiler to turn the function into machine code. This involves tracing the function to create a computation graph, which XLA then compiles.
+- **Performance Impact:** JIT compilation can greatly improve performance, especially for intensive tasks. By optimizing the computation graph and fusing operations, XLA cuts down on the overhead from Python’s dynamic nature and speeds up execution.
 
 #### Section 2.5.3: XLA
-Hola buenas 
+XLA (Accelerated Linear Algebra) is a specialized compiler that optimizes machine learning computations. It's crucial to JAX’s performance and offers several benefits:
 
-## Section 3: Out contribution
+- **Compilation Process:** XLA processes the computation graph from JAX and optimizes it through operation fusion, constant folding, and kernel generation. These optimizations reduce memory use and speed up execution.
+- **Operation Fusion:** XLA’s operation fusion combines multiple operations into a single kernel, reducing memory accesses and boosting computational efficiency.
+
+### Handling Graphs in JAX
+
+JAX handles graphs efficiently despite their irregular data structures using several techniques:
+
+1. **Padding Nodes and Edges:** To batch process graphs, they are padded to a uniform size by adding dummy nodes and edges, ensuring all graphs in a batch have the same number of nodes and edges. This creates consistent tensor shapes for GPU processing.
+2. **Masking:** Masks, binary arrays indicating valid elements of padded tensors, ensure that padding doesn’t affect computation. Masks are applied to ignore padded elements during computation.
+3. **Batch Processing:** With padding and masking, graphs can be processed in batches for efficient GPU computation. JAX’s 'vmap' operations enhance this by automatically applying operations across batches.
+
+## Implementation
+
+- **Generic Forward Pass:**
+    - JAX:
+        
+        ```python
+        # Define Model Parameters
+        def init_params(layer_sizes, key):
+            keys = random.split(key, len(layer_sizes))
+            params = [(random.normal(k, (m, n)) * jnp.sqrt(2.0/m), jnp.zeros(n))
+                      for m, n, k in zip(layer_sizes[:-1], layer_sizes[1:], keys)]
+            return params
+        
+        # Define Model Functions
+        def relu(x):
+            return jnp.maximum(0, x)
+        
+        def forward(params, x):
+            activations = x
+            for W, b in params[:-1]:
+                activations = relu(jnp.dot(activations, W) + b)
+            final_W, final_b = params[-1]
+            logits = jnp.dot(activations, final_W) + final_b
+            return logits
+        
+        # Compute Forward Pass
+        x = random.normal(key, (1, 784))  # Example input: batch size of 1
+        logits = forward(params, x)
+        ```
+        
+    - PyTorch:
+        
+        ```python
+        # Define Model Class
+        	class SimpleNN(nn.Module):
+            def __init__(self, input_size, hidden_size, output_size):
+                super(SimpleNN, self).__init__()
+                self.fc1 = nn.Linear(input_size, hidden_size)
+                self.fc2 = nn.Linear(hidden_size, output_size)
+        
+            def forward(self, x):
+                x = F.relu(self.fc1(x))
+                x = self.fc2(x)
+                return x
+         
+        # Initialize Model and compute Forward Pass     
+        model = SimpleNN(input_size=784, hidden_size=128, output_size=10)
+        
+        x = torch.randn(1, 784)  # Example input: batch size of 1
+        logits = model(x)
+        ```
+        
+        JAX uses a functional programming style with pure functions, while PyTorch opts for a more object-oriented approach where models are instances of a nn.Module.
+        
+- **Backward pass:**
+    - JAX:
+        
+        ```python
+        # Define Loss Function
+        def loss(params, x, y):
+            logits = forward(params, x)
+            return jnp.mean(jnp.square(logits - y))  # Mean squared error loss
+        
+        # Compute Gradients
+        x = random.normal(key, (1, 784))  # Example input
+        y = random.normal(key, (1, 10))   # Example target output
+        
+        grad_loss = grad(loss)
+        gradients = grad_loss(params, x, y)
+        ```
+        
+    - PyTorch:
+        
+        ```python
+        # Defines Loss Function
+        criterion = nn.MSELoss()  # Mean squared error loss
+        
+        # Compute Forward pass and Loss
+        x = torch.randn(1, 784)  # Example input
+        y = torch.randn(1, 10)   # Example target output
+        
+        logits = model(x)
+        loss = criterion(logits, y)
+        
+        # Compute Gradients
+        loss.backward()
+        ```
+        
+        Both approaches automatically handle differentiation. Again JAX uses a more functional approach, as opposed to the OOP style of PyTorch
+        
+- **Graph Padding:**
+    - JAX:
+        
+        ```python
+        x_padded = jnp.pad(x, padding, mode='constant', constant_values=0)
+        ```
+        
+    - PyTorch:
+        
+        ```python
+        x_padded = F.pad(x, padding, mode='constant', value=0)
+        ```
+        
+        Both approaches are similar and straightforward.
+        
+- **Noise Schedule:**
+    - JAX:
+        
+        ```python
+        # Add noise to the inputs during training
+        noise_level = noise_schedule(epoch, total_epochs)
+        x = random.normal(key, (1, 784))  # Example input
+        x_noisy = add_noise(x, noise_level, key)
+        logits = forward(params, x_noisy)
+        ```
+        
+    - PyTorch:
+        
+        ```python
+        # Add noise to the inputs during training
+        noise_level = noise_schedule(epoch, total_epochs)
+        x = torch.randn(1, 784)  # Example input
+        model.train()
+        x_noisy = add_noise(x, noise_level)
+        optimizer.zero_grad()
+        logits = model(x_noisy)
+        ```
+        
+        Adding noise is the exact same, except for the fact that in PyTorch the model needs to be put into training mode.
+        
+
+## Comparison
+
+- **Runtime:**
+    - Forward pass:
+    - Backward pass:
+        - Compare Jitting, 1, 2 multiple passes
+- **Comp time vs JIT backward time**
+- **Runtime vs JIT backward time**
+- **Compare NLL for PyTorch & JAX (Necessary)**
+
+## Visualization
+
+### Model Architecture
+
+The architecture employs a U-Net-like structure, a common choice in diffusion models due to its effective handling of high-dimensional data. The U-Net consists of an encoder and a decoder, connected by a bottleneck layer that processes the data at multiple resolutions. The encoder progressively downsamples the input data, extracting hierarchical features that capture various levels of molecular detail. The decoder then upsamples these features, reconstructing the 3D molecular structure while ensuring that the output remains invariant to Euclidean transformations.
+
+A key innovation in EDM is the integration of E(3) equivariant convolutional layers within the U-Net. These layers are designed to operate on the 3D coordinates and atom types simultaneously, ensuring that the learned features respect the symmetries of the underlying physical space. The equivariant layers perform convolutions that are invariant to rotations and translations, allowing the network to learn representations that are robust to such transformations.
+
+<aside>
+<img src="https://www.notion.so/icons/arrow-right-basic_blue.svg" alt="https://www.notion.so/icons/arrow-right-basic_blue.svg" width="40px" /> They use:
+Diffusion:
+
+Equivariant:
+- As they consider interactions between all atoms, the assume a fully connected graph G with nodes vi, where each node represents a coordinate and the corresponding feautres.
+- They use an Equivariant Graph NN composed of L Equiv Graph Conv Layers that apply the following non linear transformation: x,h = EGNN(x0,h0).
+
+Puting them together: EQUIVARIANT DIFFUSION MODEL
+- Consists on defining a noising process on node positions and features, and learning the generative denoising process using an equivariant NN. They also define the log-likelihood computation.
+      - Noising:
+             -Features: as they are invariant to E(n) transformations, the noise distribution for them will be the conventional normal distribution. However, depending if we are in categorical or ordinal we will have different representations of the features and different LIKELIHOOD.
+
+</aside>
+
+## Section 3: Our contribution
 
 Our primary contribution is the re-implementation of the original EDM from [_link to original paper_] in the JAX/FLAX framework. JAX, with its ability to automatically differentiate through native Python and Numpy functions, and FLAX, which provides a high-level interface for neural network building, collectively offer significant advantages in terms of performance and flexibility.
 

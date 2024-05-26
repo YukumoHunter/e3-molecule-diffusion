@@ -44,6 +44,7 @@ def clip_noise_schedule(alphas2, clip_value=0.001):
 
     return alphas2
 
+
 def polynomial_schedule(timesteps: int, s=1e-4, power=3.0):
     """
     Amount of noise per step

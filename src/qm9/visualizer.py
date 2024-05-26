@@ -7,7 +7,7 @@ import imageio
 import jax.numpy as jnp
 
 
-matplotlib.use('Agg')
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from qm9 import bond_analyze
 ##############
@@ -15,7 +15,16 @@ from qm9 import bond_analyze
 ###########-->
 
 
-def save_xyz_file(path, one_hot, charges, positions, dataset_info, id_from=0, name='molecule', node_mask=None):
+def save_xyz_file(
+    path,
+    one_hot,
+    charges,
+    positions,
+    dataset_info,
+    id_from=0,
+    name="molecule",
+    node_mask=None,
+):
     try:
         os.makedirs(path)
     except OSError:
@@ -27,29 +36,37 @@ def save_xyz_file(path, one_hot, charges, positions, dataset_info, id_from=0, na
         atomsxmol = [one_hot.size(1)] * one_hot.size(0)
 
     for batch_i in range(one_hot.size(0)):
-        f = open(path + name + '_' + "%03d.txt" % (batch_i + id_from), "w")
+        f = open(path + name + "_" + "%03d.txt" % (batch_i + id_from), "w")
         f.write("%d\n\n" % atomsxmol[batch_i])
         atoms = jnp.argmax(one_hot[batch_i], axs=1)
         n_atoms = int(atomsxmol[batch_i])
         for atom_i in range(n_atoms):
             atom = atoms[atom_i]
-            atom = dataset_info['atom_decoder'][atom]
-            f.write("%s %.9f %.9f %.9f\n" % (atom, positions[batch_i, atom_i, 0], positions[batch_i, atom_i, 1], positions[batch_i, atom_i, 2]))
+            atom = dataset_info["atom_decoder"][atom]
+            f.write(
+                "%s %.9f %.9f %.9f\n"
+                % (
+                    atom,
+                    positions[batch_i, atom_i, 0],
+                    positions[batch_i, atom_i, 1],
+                    positions[batch_i, atom_i, 2],
+                )
+            )
         f.close()
 
 
 def load_molecule_xyz(file, dataset_info):
-    with open(file, encoding='utf8') as f:
+    with open(file, encoding="utf8") as f:
         n_atoms = int(f.readline())
-        one_hot = jnp.zeros(n_atoms, len(dataset_info['atom_decoder']))
+        one_hot = jnp.zeros(n_atoms, len(dataset_info["atom_decoder"]))
         charges = jnp.zeros(n_atoms, 1)
         positions = jnp.zeros(n_atoms, 3)
         f.readline()
         atoms = f.readlines()
         for i in range(n_atoms):
-            atom = atoms[i].split(' ')
+            atom = atoms[i].split(" ")
             atom_type = atom[0]
-            one_hot[i, dataset_info['atom_encoder'][atom_type]] = 1
+            one_hot[i, dataset_info["atom_encoder"][atom_type]] = 1
             position = jnp.array([float(e) for e in atom[1:]])
             positions[i, :] = position
         return positions, one_hot, charges
@@ -61,7 +78,8 @@ def load_xyz_files(path, shuffle=True):
         random.shuffle(files)
     return files
 
-#<----########
+
+# <----########
 ### Files ####
 ##############
 def draw_sphere(ax, x, y, z, size, color, alpha):
@@ -74,8 +92,16 @@ def draw_sphere(ax, x, y, z, size, color, alpha):
     # for i in range(2):
     #    ax.plot_surface(x+random.randint(-5,5), y+random.randint(-5,5), z+random.randint(-5,5),  rstride=4, cstride=4, color='b', linewidth=0, alpha=0.5)
 
-    ax.plot_surface(x + xs, y + ys, z + zs, rstride=2, cstride=2, color=color, linewidth=0,
-                    alpha=alpha)
+    ax.plot_surface(
+        x + xs,
+        y + ys,
+        z + zs,
+        rstride=2,
+        cstride=2,
+        color=color,
+        linewidth=0,
+        alpha=alpha,
+    )
     # # calculate vectors for "vertical" circle
     # a = np.array([-np.sin(elev / 180 * np.pi), 0, np.cos(elev / 180 * np.pi)])
     # b = np.array([0, 1, 0])
@@ -94,8 +120,9 @@ def draw_sphere(ax, x, y, z, size, color, alpha):
     # ax.view_init(elev=elev, azim=0)
 
 
-def plot_molecule(ax, positions, atom_type, alpha, spheres_3d, hex_bg_color,
-                  dataset_info):
+def plot_molecule(
+    ax, positions, atom_type, alpha, spheres_3d, hex_bg_color, dataset_info
+):
     # draw_sphere(ax, 0, 0, 0, 1)
     # draw_sphere(ax, 1, 1, 1, 1)
 
@@ -105,9 +132,9 @@ def plot_molecule(ax, positions, atom_type, alpha, spheres_3d, hex_bg_color,
     # Hydrogen, Carbon, Nitrogen, Oxygen, Flourine
 
     # ax.set_facecolor((1.0, 0.47, 0.42))
-    colors_dic = np.array(dataset_info['colors_dic'])
-    radius_dic = np.array(dataset_info['radius_dic'])
-    area_dic = 1500 * radius_dic ** 2
+    colors_dic = np.array(dataset_info["colors_dic"])
+    radius_dic = np.array(dataset_info["radius_dic"])
+    area_dic = 1500 * radius_dic**2
     # areas_dic = sizes_dic * sizes_dic * 3.1416
 
     areas = area_dic[atom_type]
@@ -118,28 +145,33 @@ def plot_molecule(ax, positions, atom_type, alpha, spheres_3d, hex_bg_color,
         for i, j, k, s, c in zip(x, y, z, radii, colors):
             draw_sphere(ax, i.item(), j.item(), k.item(), 0.7 * s, c, alpha)
     else:
-        ax.scatter(x, y, z, s=areas, alpha=0.9 * alpha,
-                   c=colors)  # , linewidths=2, edgecolors='#FFFFFF')
+        ax.scatter(
+            x, y, z, s=areas, alpha=0.9 * alpha, c=colors
+        )  # , linewidths=2, edgecolors='#FFFFFF')
 
     for i in range(len(x)):
         for j in range(i + 1, len(x)):
             p1 = np.array([x[i], y[i], z[i]])
             p2 = np.array([x[j], y[j], z[j]])
             dist = np.sqrt(np.sum((p1 - p2) ** 2))
-            atom1, atom2 = dataset_info['atom_decoder'][atom_type[i]], \
-                           dataset_info['atom_decoder'][atom_type[j]]
+            atom1, atom2 = (
+                dataset_info["atom_decoder"][atom_type[i]],
+                dataset_info["atom_decoder"][atom_type[j]],
+            )
             s = sorted((atom_type[i], atom_type[j]))
-            pair = (dataset_info['atom_decoder'][s[0]],
-                    dataset_info['atom_decoder'][s[1]])
-            if 'qm9' in dataset_info['name']:
+            pair = (
+                dataset_info["atom_decoder"][s[0]],
+                dataset_info["atom_decoder"][s[1]],
+            )
+            if "qm9" in dataset_info["name"]:
                 draw_edge_int = bond_analyze.get_bond_order(atom1, atom2, dist)
                 line_width = (3 - 2) * 2 * 2
-            elif dataset_info['name'] == 'geom':
+            elif dataset_info["name"] == "geom":
                 draw_edge_int = bond_analyze.geom_predictor(pair, dist)
                 # Draw edge outputs 1 / -1 value, convert to True / False.
                 line_width = 2
             else:
-                raise Exception('Wrong dataset_info name')
+                raise Exception("Wrong dataset_info name")
             draw_edge = draw_edge_int > 0
             if draw_edge:
                 if draw_edge_int == 4:
@@ -148,23 +180,38 @@ def plot_molecule(ax, positions, atom_type, alpha, spheres_3d, hex_bg_color,
                     # linewidth_factor = draw_edge_int  # Prop to number of
                     # edges.
                     linewidth_factor = 1
-                ax.plot([x[i], x[j]], [y[i], y[j]], [z[i], z[j]],
-                        linewidth=line_width * linewidth_factor,
-                        c=hex_bg_color, alpha=alpha)
+                ax.plot(
+                    [x[i], x[j]],
+                    [y[i], y[j]],
+                    [z[i], z[j]],
+                    linewidth=line_width * linewidth_factor,
+                    c=hex_bg_color,
+                    alpha=alpha,
+                )
 
 
-def plot_data3d(positions, atom_type, dataset_info, camera_elev=0, camera_azim=0, save_path=None, spheres_3d=False,
-                bg='black', alpha=1.):
+def plot_data3d(
+    positions,
+    atom_type,
+    dataset_info,
+    camera_elev=0,
+    camera_azim=0,
+    save_path=None,
+    spheres_3d=False,
+    bg="black",
+    alpha=1.0,
+):
     black = (0, 0, 0)
     white = (1, 1, 1)
-    hex_bg_color = '#FFFFFF' if bg == 'black' else '#666666'
+    hex_bg_color = "#FFFFFF" if bg == "black" else "#666666"
 
     from mpl_toolkits.mplot3d import Axes3D
+
     fig = plt.figure()
-    ax = fig.add_subplot(projection='3d')
-    ax.set_aspect('auto')
+    ax = fig.add_subplot(projection="3d")
+    ax.set_aspect("auto")
     ax.view_init(elev=camera_elev, azim=camera_azim)
-    if bg == 'black':
+    if bg == "black":
         ax.set_facecolor(black)
     else:
         ax.set_facecolor(white)
@@ -174,15 +221,16 @@ def plot_data3d(positions, atom_type, dataset_info, camera_elev=0, camera_azim=0
     ax.zaxis.pane.set_alpha(0)
     ax._axis3don = False
 
-    if bg == 'black':
+    if bg == "black":
         ax.w_xaxis.line.set_color("black")
     else:
         ax.w_xaxis.line.set_color("white")
 
-    plot_molecule(ax, positions, atom_type, alpha, spheres_3d,
-                  hex_bg_color, dataset_info)
+    plot_molecule(
+        ax, positions, atom_type, alpha, spheres_3d, hex_bg_color, dataset_info
+    )
 
-    if 'qm9' in dataset_info['name']:
+    if "qm9" in dataset_info["name"]:
         max_value = positions.abs().max().item()
 
         # axis_lim = 3.2
@@ -190,7 +238,7 @@ def plot_data3d(positions, atom_type, dataset_info, camera_elev=0, camera_azim=0
         ax.set_xlim(-axis_lim, axis_lim)
         ax.set_ylim(-axis_lim, axis_lim)
         ax.set_zlim(-axis_lim, axis_lim)
-    elif dataset_info['name'] == 'geom':
+    elif dataset_info["name"] == "geom":
         max_value = positions.abs().max().item()
 
         # axis_lim = 3.2
@@ -199,16 +247,16 @@ def plot_data3d(positions, atom_type, dataset_info, camera_elev=0, camera_azim=0
         ax.set_ylim(-axis_lim, axis_lim)
         ax.set_zlim(-axis_lim, axis_lim)
     else:
-        raise ValueError(dataset_info['name'])
+        raise ValueError(dataset_info["name"])
 
     dpi = 120 if spheres_3d else 50
 
     if save_path is not None:
-        plt.savefig(save_path, bbox_inches='tight', pad_inches=0.0, dpi=dpi)
+        plt.savefig(save_path, bbox_inches="tight", pad_inches=0.0, dpi=dpi)
 
         if spheres_3d:
             img = imageio.imread(save_path)
-            img_brighter = np.clip(img * 1.4, 0, 255).astype('uint8')
+            img_brighter = np.clip(img * 1.4, 0, 255).astype("uint8")
             imageio.imsave(save_path, img_brighter)
     else:
         plt.show()
@@ -216,18 +264,27 @@ def plot_data3d(positions, atom_type, dataset_info, camera_elev=0, camera_azim=0
 
 
 def plot_data3d_uncertainty(
-        all_positions, all_atom_types, dataset_info, camera_elev=0, camera_azim=0,
-        save_path=None, spheres_3d=False, bg='black', alpha=1.):
+    all_positions,
+    all_atom_types,
+    dataset_info,
+    camera_elev=0,
+    camera_azim=0,
+    save_path=None,
+    spheres_3d=False,
+    bg="black",
+    alpha=1.0,
+):
     black = (0, 0, 0)
     white = (1, 1, 1)
-    hex_bg_color = '#FFFFFF' if bg == 'black' else '#666666'
+    hex_bg_color = "#FFFFFF" if bg == "black" else "#666666"
 
     from mpl_toolkits.mplot3d import Axes3D
+
     fig = plt.figure()
-    ax = fig.add_subplot(projection='3d')
-    ax.set_aspect('auto')
+    ax = fig.add_subplot(projection="3d")
+    ax.set_aspect("auto")
     ax.view_init(elev=camera_elev, azim=camera_azim)
-    if bg == 'black':
+    if bg == "black":
         ax.set_facecolor(black)
     else:
         ax.set_facecolor(white)
@@ -237,7 +294,7 @@ def plot_data3d_uncertainty(
     ax.zaxis.pane.set_alpha(0)
     ax._axis3don = False
 
-    if bg == 'black':
+    if bg == "black":
         ax.w_xaxis.line.set_color("black")
     else:
         ax.w_xaxis.line.set_color("white")
@@ -245,10 +302,11 @@ def plot_data3d_uncertainty(
     for i in range(len(all_positions)):
         positions = all_positions[i]
         atom_type = all_atom_types[i]
-        plot_molecule(ax, positions, atom_type, alpha, spheres_3d,
-                      hex_bg_color, dataset_info)
+        plot_molecule(
+            ax, positions, atom_type, alpha, spheres_3d, hex_bg_color, dataset_info
+        )
 
-    if 'qm9' in dataset_info['name']:
+    if "qm9" in dataset_info["name"]:
         max_value = all_positions[0].abs().max().item()
 
         # axis_lim = 3.2
@@ -256,7 +314,7 @@ def plot_data3d_uncertainty(
         ax.set_xlim(-axis_lim, axis_lim)
         ax.set_ylim(-axis_lim, axis_lim)
         ax.set_zlim(-axis_lim, axis_lim)
-    elif dataset_info['name'] == 'geom':
+    elif dataset_info["name"] == "geom":
         max_value = all_positions[0].abs().max().item()
 
         # axis_lim = 3.2
@@ -265,16 +323,16 @@ def plot_data3d_uncertainty(
         ax.set_ylim(-axis_lim, axis_lim)
         ax.set_zlim(-axis_lim, axis_lim)
     else:
-        raise ValueError(dataset_info['name'])
+        raise ValueError(dataset_info["name"])
 
     dpi = 120 if spheres_3d else 50
 
     if save_path is not None:
-        plt.savefig(save_path, bbox_inches='tight', pad_inches=0.0, dpi=dpi)
+        plt.savefig(save_path, bbox_inches="tight", pad_inches=0.0, dpi=dpi)
 
         if spheres_3d:
             img = imageio.imread(save_path)
-            img_brighter = np.clip(img * 1.4, 0, 255).astype('uint8')
+            img_brighter = np.clip(img * 1.4, 0, 255).astype("uint8")
             imageio.imsave(save_path, img_brighter)
     else:
         plt.show()
@@ -290,11 +348,13 @@ def plot_grid():
     im3 = np.flipud(im1)
     im4 = np.fliplr(im2)
 
-    fig = plt.figure(figsize=(10., 10.))
-    grid = ImageGrid(fig, 111,  # similar to subplot(111)
-                     nrows_ncols=(6, 6),  # creates 2x2 grid of axes
-                     axes_pad=0.1,  # pad between axes in inch.
-                     )
+    fig = plt.figure(figsize=(10.0, 10.0))
+    grid = ImageGrid(
+        fig,
+        111,  # similar to subplot(111)
+        nrows_ncols=(6, 6),  # creates 2x2 grid of axes
+        axes_pad=0.1,  # pad between axes in inch.
+    )
 
     for ax, im in zip(grid, [im1, im2, im3, im4]):
         # Iterating over the grid returns the Axes.
@@ -312,18 +372,22 @@ def visualize(path, dataset_info, max_num=25, wandb=None, spheres_3d=False):
         dists = torch.cdist(positions.unsqueeze(0), positions.unsqueeze(0)).squeeze(0)
         dists = dists[dists > 0]
         print("Average distance between atoms", dists.mean().item())
-        plot_data3d(positions, atom_type, dataset_info=dataset_info, save_path=file[:-4] + '.png',
-                    spheres_3d=spheres_3d)
+        plot_data3d(
+            positions,
+            atom_type,
+            dataset_info=dataset_info,
+            save_path=file[:-4] + ".png",
+            spheres_3d=spheres_3d,
+        )
 
         if wandb is not None:
-            path = file[:-4] + '.png'
+            path = file[:-4] + ".png"
             # Log image(s)
             im = plt.imread(path)
-            wandb.log({'molecule': [wandb.Image(im, caption=path)]})
+            wandb.log({"molecule": [wandb.Image(im, caption=path)]})
 
 
-def visualize_chain(path, dataset_info, wandb=None, spheres_3d=False,
-                    mode="chain"):
+def visualize_chain(path, dataset_info, wandb=None, spheres_3d=False, mode="chain"):
     files = load_xyz_files(path)
     files = sorted(files)
     save_paths = []
@@ -334,15 +398,21 @@ def visualize_chain(path, dataset_info, wandb=None, spheres_3d=False,
         positions, one_hot, charges = load_molecule_xyz(file, dataset_info=dataset_info)
 
         atom_type = jnp.argmax(one_hot, axis=1).numpy()
-        fn = file[:-4] + '.png'
-        plot_data3d(positions, atom_type, dataset_info=dataset_info,
-                    save_path=fn, spheres_3d=spheres_3d, alpha=1.0)
+        fn = file[:-4] + ".png"
+        plot_data3d(
+            positions,
+            atom_type,
+            dataset_info=dataset_info,
+            save_path=fn,
+            spheres_3d=spheres_3d,
+            alpha=1.0,
+        )
         save_paths.append(fn)
 
     imgs = [imageio.imread(fn) for fn in save_paths]
     dirname = os.path.dirname(save_paths[0])
-    gif_path = dirname + '/output.gif'
-    print(f'Creating gif with {len(imgs)} images')
+    gif_path = dirname + "/output.gif"
+    print(f"Creating gif with {len(imgs)} images")
     # Add the last frame 10 times so that the final result remains temporally.
     # imgs.extend([imgs[-1]] * 10)
     imageio.mimsave(gif_path, imgs, subrectangles=True)
@@ -352,7 +422,8 @@ def visualize_chain(path, dataset_info, wandb=None, spheres_3d=False,
 
 
 def visualize_chain_uncertainty(
-        path, dataset_info, wandb=None, spheres_3d=False, mode="chain"):
+    path, dataset_info, wandb=None, spheres_3d=False, mode="chain"
+):
     files = load_xyz_files(path)
     files = sorted(files)
     save_paths = []
@@ -362,29 +433,32 @@ def visualize_chain_uncertainty(
             break
 
         file = files[i]
-        file2 = files[i+1]
-        file3 = files[i+2]
+        file2 = files[i + 1]
+        file3 = files[i + 2]
 
         positions, one_hot, _ = load_molecule_xyz(file, dataset_info=dataset_info)
-        positions2, one_hot2, _ = load_molecule_xyz(
-            file2, dataset_info=dataset_info)
-        positions3, one_hot3, _ = load_molecule_xyz(
-            file3, dataset_info=dataset_info)
+        positions2, one_hot2, _ = load_molecule_xyz(file2, dataset_info=dataset_info)
+        positions3, one_hot3, _ = load_molecule_xyz(file3, dataset_info=dataset_info)
 
         all_positions = jnp.stack([positions, positions2, positions3], axis=0)
         one_hot = jnp.stack([one_hot, one_hot2, one_hot3], axis=0)
 
         all_atom_type = jnp.argmax(one_hot, axis=2).numpy()
-        fn = file[:-4] + '.png'
+        fn = file[:-4] + ".png"
         plot_data3d_uncertainty(
-            all_positions, all_atom_type, dataset_info=dataset_info,
-            save_path=fn, spheres_3d=spheres_3d, alpha=0.5)
+            all_positions,
+            all_atom_type,
+            dataset_info=dataset_info,
+            save_path=fn,
+            spheres_3d=spheres_3d,
+            alpha=0.5,
+        )
         save_paths.append(fn)
 
     imgs = [imageio.imread(fn) for fn in save_paths]
     dirname = os.path.dirname(save_paths[0])
-    gif_path = dirname + '/output.gif'
-    print(f'Creating gif with {len(imgs)} images')
+    gif_path = dirname + "/output.gif"
+    print(f"Creating gif with {len(imgs)} images")
     # Add the last frame 10 times so that the final result remains temporally.
     # imgs.extend([imgs[-1]] * 10)
     imageio.mimsave(gif_path, imgs, subrectangles=True)
@@ -393,24 +467,25 @@ def visualize_chain_uncertainty(
         wandb.log({mode: [wandb.Video(gif_path, caption=gif_path)]})
 
 
-if __name__ == '__main__':
-    #plot_grid()
+if __name__ == "__main__":
+    # plot_grid()
     import qm9.dataset as dataset
     from configs.datasets_config import qm9_with_h, geom_with_h
-    matplotlib.use('macosx')
+
+    matplotlib.use("macosx")
 
     task = "visualize_molecules"
-    task_dataset = 'geom'
+    task_dataset = "geom"
 
-    if task_dataset == 'qm9':
+    if task_dataset == "qm9":
         dataset_info = qm9_with_h
 
         class Args:
             batch_size = 1
             num_workers = 0
             filter_n_atoms = None
-            datadir = 'qm9/temp'
-            dataset = 'qm9'
+            datadir = "qm9/temp"
+            dataset = "qm9"
             remove_h = False
             include_charges = True
 
@@ -418,20 +493,22 @@ if __name__ == '__main__':
 
         dataloaders, charge_scale = dataset.retrieve_dataloaders(cfg)
 
-        for i, data in enumerate(dataloaders['train']):
-
-            positions = data['positions'].view(-1, 3)
+        for i, data in enumerate(dataloaders["train"]):
+            positions = data["positions"].view(-1, 3)
             positions_centered = positions - positions.mean(dim=0, keepdim=True)
-            one_hot = jnp.reshape(data['one_hot'], (-1, 5)).astype(jnp.float32)
+            one_hot = jnp.reshape(data["one_hot"], (-1, 5)).astype(jnp.float32)
             atom_type = jnp.argmax(one_hot, axis=1).numpy()
 
             plot_data3d(
-                positions_centered, atom_type, dataset_info=dataset_info,
-                spheres_3d=True)
+                positions_centered,
+                atom_type,
+                dataset_info=dataset_info,
+                spheres_3d=True,
+            )
 
-    elif task_dataset == 'geom':
-        files = load_xyz_files('outputs/data')
-        matplotlib.use('macosx')
+    elif task_dataset == "geom":
+        files = load_xyz_files("outputs/data")
+        matplotlib.use("macosx")
         for file in files:
             x, one_hot, _ = load_molecule_xyz(file, dataset_info=geom_with_h)
 
@@ -445,8 +522,11 @@ if __name__ == '__main__':
             atom_type = atom_type[mask]
 
             plot_data3d(
-                positions_centered, atom_type, dataset_info=geom_with_h,
-                spheres_3d=False)
+                positions_centered,
+                atom_type,
+                dataset_info=geom_with_h,
+                spheres_3d=False,
+            )
 
     else:
         raise ValueError(dataset)

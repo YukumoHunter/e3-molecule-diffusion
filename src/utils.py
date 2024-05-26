@@ -9,27 +9,29 @@ from jax import random
 # Folders
 def create_folders(args):
     try:
-        os.makedirs('outputs')
+        os.makedirs("outputs")
     except OSError:
         pass
 
     try:
-        os.makedirs('outputs/' + args.exp_name)
+        os.makedirs("outputs/" + args.exp_name)
     except OSError:
         pass
 
 
 # Model checkpoints
 
+
 def save_model(model, path):
     jnp.savez(path, **model)
+
 
 def load_model(path):
     return jnp.load(path)
 
 
-#Gradient clipping
-class Queue():
+# Gradient clipping
+class Queue:
     def __init__(self, max_len=50):
         self.items = []
         self.max_len = max_len
@@ -55,7 +57,8 @@ def gradient_clipping(flow, gradnorm_queue):
 
     # Clips gradient and returns the norm
     grad_norm = torch.nn.utils.clip_grad_norm_(
-        flow.parameters(), max_norm=max_grad_norm, norm_type=2.0)
+        flow.parameters(), max_norm=max_grad_norm, norm_type=2.0
+    )
 
     if float(grad_norm) > max_grad_norm:
         gradnorm_queue.add(float(max_grad_norm))
@@ -63,8 +66,10 @@ def gradient_clipping(flow, gradnorm_queue):
         gradnorm_queue.add(float(grad_norm))
 
     if float(grad_norm) > max_grad_norm:
-        print(f'Clipped gradient with value {grad_norm:.1f} '
-              f'while allowed {max_grad_norm:.1f}')
+        print(
+            f"Clipped gradient with value {grad_norm:.1f} "
+            f"while allowed {max_grad_norm:.1f}"
+        )
     return grad_norm
 
 
@@ -84,9 +89,7 @@ def random_rotation(x, key):
         x = jnp.matmul(R, x)
         x = jnp.swapaxes(x, 1, 2)
 
-
     elif n_dims == 3:
-
         # Build Rx
         Rx = jnp.eye(3).reshape(1, 3, 3).repeat(bs, axis=0)
         Ry = jnp.eye(3).reshape(1, 3, 3).repeat(bs, axis=0)
@@ -96,21 +99,44 @@ def random_rotation(x, key):
         theta_y = random.uniform(key, (bs, 1, 1)) * angle_range - jnp.pi
         theta_z = random.uniform(key, (bs, 1, 1)) * angle_range - jnp.pi
 
-        Rx = jax.ops.index_update(Rx[:, 1:2, 1:2], jax.ops.index[:, :], jnp.cos(theta_x))
-        Rx = jax.ops.index_update(Rx[:, 1:2, 2:3], jax.ops.index[:, :], jnp.sin(theta_x))
-        Rx = jax.ops.index_update(Rx[:, 2:3, 1:2], jax.ops.index[:, :], -jnp.sin(theta_x))
-        Rx = jax.ops.index_update(Rx[:, 2:3, 2:3], jax.ops.index[:, :], jnp.cos(theta_x))
+        Rx = jax.ops.index_update(
+            Rx[:, 1:2, 1:2], jax.ops.index[:, :], jnp.cos(theta_x)
+        )
+        Rx = jax.ops.index_update(
+            Rx[:, 1:2, 2:3], jax.ops.index[:, :], jnp.sin(theta_x)
+        )
+        Rx = jax.ops.index_update(
+            Rx[:, 2:3, 1:2], jax.ops.index[:, :], -jnp.sin(theta_x)
+        )
+        Rx = jax.ops.index_update(
+            Rx[:, 2:3, 2:3], jax.ops.index[:, :], jnp.cos(theta_x)
+        )
 
-        Ry = jax.ops.index_update(Ry[:, 0:1, 0:1], jax.ops.index[:, :], jnp.cos(theta_y))
-        Ry = jax.ops.index_update(Ry[:, 0:1, 2:3], jax.ops.index[:, :], -jnp.sin(theta_y))
-        Ry = jax.ops.index_update(Ry[:, 2:3, 0:1], jax.ops.index[:, :], jnp.sin(theta_y))
-        Ry = jax.ops.index_update(Ry[:, 2:3, 2:3], jax.ops.index[:, :], jnp.cos(theta_y))
+        Ry = jax.ops.index_update(
+            Ry[:, 0:1, 0:1], jax.ops.index[:, :], jnp.cos(theta_y)
+        )
+        Ry = jax.ops.index_update(
+            Ry[:, 0:1, 2:3], jax.ops.index[:, :], -jnp.sin(theta_y)
+        )
+        Ry = jax.ops.index_update(
+            Ry[:, 2:3, 0:1], jax.ops.index[:, :], jnp.sin(theta_y)
+        )
+        Ry = jax.ops.index_update(
+            Ry[:, 2:3, 2:3], jax.ops.index[:, :], jnp.cos(theta_y)
+        )
 
-        Rz = jax.ops.index_update(Rz[:, 0:1, 0:1], jax.ops.index[:, :], jnp.cos(theta_z))
-        Rz = jax.ops.index_update(Rz[:, 0:1, 1:2], jax.ops.index[:, :], jnp.sin(theta_z))
-        Rz = jax.ops.index_update(Rz[:, 1:2, 0:1], jax.ops.index[:, :], -jnp.sin(theta_z))
-        Rz = jax.ops.index_update(Rz[:, 1:2, 1:2], jax.ops.index[:, :], jnp.cos(theta_z))
-
+        Rz = jax.ops.index_update(
+            Rz[:, 0:1, 0:1], jax.ops.index[:, :], jnp.cos(theta_z)
+        )
+        Rz = jax.ops.index_update(
+            Rz[:, 0:1, 1:2], jax.ops.index[:, :], jnp.sin(theta_z)
+        )
+        Rz = jax.ops.index_update(
+            Rz[:, 1:2, 0:1], jax.ops.index[:, :], -jnp.sin(theta_z)
+        )
+        Rz = jax.ops.index_update(
+            Rz[:, 1:2, 1:2], jax.ops.index[:, :], jnp.cos(theta_z)
+        )
 
         x = jnp.swapaxes(x, 1, 2)
         x = jnp.matmul(Rx, x)
@@ -125,11 +151,11 @@ def random_rotation(x, key):
 
 # Other utilities
 def get_wandb_username(username):
-    if username == 'cvignac':
-        return 'cvignac'
+    if username == "cvignac":
+        return "cvignac"
     current_user = getpass.getuser()
-    if current_user == 'victor' or current_user == 'garciasa':
-        return 'vgsatorras'
+    if current_user == "victor" or current_user == "garciasa":
+        return "vgsatorras"
     else:
         return username
 

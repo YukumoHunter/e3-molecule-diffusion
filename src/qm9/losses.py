@@ -9,11 +9,12 @@ def assert_correctly_masked(variable, node_mask):
     assert (variable * (1 - node_mask)).abs().sum().item() < 1e-8
 
 
-def compute_loss_and_nll(args, generative_model, nodes_dist, x, h, node_mask, edge_mask, context):
+def compute_loss_and_nll(
+    args, generative_model, nodes_dist, x, h, node_mask, edge_mask, context
+):
     bs, n_nodes, n_dims = x.size()
 
-
-    if args.probabilistic_model == 'diffusion':
+    if args.probabilistic_model == "diffusion":
         edge_mask = edge_mask.view(bs, n_nodes * n_nodes)
 
         assert_correctly_masked(x, node_mask)
@@ -32,8 +33,8 @@ def compute_loss_and_nll(args, generative_model, nodes_dist, x, h, node_mask, ed
         # Average over batch.
         nll = nll.mean(0)
 
-        reg_term = jnp.array([0.]).to(nll.device)
-        mean_abs_z = 0.
+        reg_term = jnp.array([0.0]).to(nll.device)
+        mean_abs_z = 0.0
     else:
         raise ValueError(args.probabilistic_model)
 

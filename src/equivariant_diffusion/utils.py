@@ -3,13 +3,15 @@ from jax import random
 import numpy as np
 
 
-class EMA():
+class EMA:
     def __init__(self, beta):
         super().__init__()
         self.beta = beta
 
     def update_model_average(self, ma_model, current_model):
-        for current_params, ma_params in zip(current_model.parameters(), ma_model.parameters()):
+        for current_params, ma_params in zip(
+            current_model.parameters(), ma_model.parameters()
+        ):
             old_weight, up_weight = ma_params.data, current_params.data
             ma_params.data = self.update_average(old_weight, up_weight)
 
@@ -31,7 +33,7 @@ def remove_mean(x):
 
 def remove_mean_with_mask(x, node_mask):
     masked_max_abs_value = (x * (1 - node_mask)).abs().sum().item()
-    assert masked_max_abs_value < 1e-5, f'Error {masked_max_abs_value} too high'
+    assert masked_max_abs_value < 1e-5, f"Error {masked_max_abs_value} too high"
     N = jnp.sum(node_mask, axis=1, keepdims=True)
 
     mean = jnp.sum(x, axis=1, keepdims=True) / N
@@ -49,12 +51,13 @@ def assert_mean_zero_with_mask(x, node_mask, eps=1e-10):
     largest_value = x.abs().max().item()
     error = jnp.sum(x, axis=1, keepdim=True).abs().max().item()
     rel_error = error / (largest_value + eps)
-    assert rel_error < 1e-2, f'Mean is not zero, relative_error {rel_error}'
+    assert rel_error < 1e-2, f"Mean is not zero, relative_error {rel_error}"
 
 
 def assert_correctly_masked(variable, node_mask):
-    assert (variable * (1 - node_mask)).abs().max().item() < 1e-4, \
-        'Variables not masked properly.'
+    assert (
+        variable * (1 - node_mask)
+    ).abs().max().item() < 1e-4, "Variables not masked properly."
 
 
 def center_gravity_zero_gaussian_log_likelihood(x):
@@ -66,10 +69,10 @@ def center_gravity_zero_gaussian_log_likelihood(x):
     r2 = sum_except_batch(x.pow(2))
 
     # The relevant hyperplane is (N-1) * D dimensional.
-    degrees_of_freedom = (N-1) * D
+    degrees_of_freedom = (N - 1) * D
 
     # Normalizing constant and logpx are computed:
-    log_normalizing_constant = -0.5 * degrees_of_freedom * np.log(2*np.pi)
+    log_normalizing_constant = -0.5 * degrees_of_freedom * np.log(2 * np.pi)
     log_px = -0.5 * r2 + log_normalizing_constant
 
     return log_px
@@ -96,10 +99,10 @@ def center_gravity_zero_gaussian_log_likelihood_with_mask(x, node_mask):
 
     # The relevant hyperplane is (N-1) * D dimensional.
     N = node_mask.squeeze(2).sum(1)  # N has shape [B]
-    degrees_of_freedom = (N-1) * D
+    degrees_of_freedom = (N - 1) * D
 
     # Normalizing constant and logpx are computed:
-    log_normalizing_constant = -0.5 * degrees_of_freedom * np.log(2*np.pi)
+    log_normalizing_constant = -0.5 * degrees_of_freedom * np.log(2 * np.pi)
     log_px = -0.5 * r2 + log_normalizing_constant
 
     return log_px
@@ -119,7 +122,7 @@ def sample_center_gravity_zero_gaussian_with_mask(key, size, node_mask):
 
 def standard_gaussian_log_likelihood(x):
     # Normalizing constant and logpx are computed:
-    log_px = sum_except_batch(-0.5 * x * x - 0.5 * np.log(2*np.pi))
+    log_px = sum_except_batch(-0.5 * x * x - 0.5 * np.log(2 * np.pi))
     return log_px
 
 
@@ -130,7 +133,7 @@ def sample_gaussian(key, size):
 
 def standard_gaussian_log_likelihood_with_mask(x, node_mask):
     # Normalizing constant and logpx are computed:
-    log_px_elementwise = -0.5 * x * x - 0.5 * np.log(2*np.pi)
+    log_px_elementwise = -0.5 * x * x - 0.5 * np.log(2 * np.pi)
     log_px = sum_except_batch(log_px_elementwise * node_mask)
     return log_px
 

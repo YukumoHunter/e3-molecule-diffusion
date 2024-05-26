@@ -28,10 +28,13 @@ def batch_stack(props):
         return jnp.array(props)
     elif jnp.ndim(props[0]) == 0:
         return jnp.stack(props)
-    else:
-        return torch.nn.utils.rnn.pad_sequence(
-            torch.tensor(np.asarray(props)), batch_first=True, padding_value=0
-        )
+    else:        
+        max_shape = np.max([prop.shape for prop in props], axis=0)
+        padded_props = [jnp.pad(prop, [(0, max_s - s) for s, max_s in zip(prop.shape, max_shape)], mode='constant') for prop in props]
+        return jnp.stack(padded_props, axis=0)
+        # return torch.nn.utils.rnn.pad_sequence(
+        #     torch.tensor(np.asarray(props)), batch_first=True, padding_value=0
+        # )
 
 
 def drop_zeros(props, to_keep):

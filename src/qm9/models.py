@@ -9,7 +9,7 @@ from egnn.models import EGNN_dynamics_QM9
 from src.utils import AdamW_with_amsgrad
 from equivariant_diffusion.en_diffusion import EnVariationalDiffusion
 
-
+# 27
 def get_model(args, dataset_info, dataloader_train):
     histogram = dataset_info["n_nodes"]
     in_node_nf = len(dataset_info["atom_decoder"]) + int(args.include_charges)

@@ -268,6 +268,43 @@ By porting the model to JAX/FLAX, we aim to:
 2. **Enhance Scalability**: The new implementation can leverage distributed computing resources more effectively, allowing for training on larger datasets and more complex models.
 3. **Facilitate Research and Development**: The modular and flexible nature of FLAX makes it easier for researchers to experiment with different model architectures and training regimes.
 
+
+# Replication
+
+Besides rewriting the code in JAX, we also ran the original PyTorch code alongside the new JAX code to compare results. Both code runs used the same hyperparameters, allowing for a direct comparison of performance and outcomes. 
+
+## Key Experiments
+
+Our Experiments focused on two primary tasks to thorougly assess the capabilities of JAX:
+
+1. **24-Hour Continuous Execution:** We replicated the results by tunning both the PyTorch and JAX codes continuously for 24 hours. This long-duration test was crucial for validating the stability and consistency of both implementations. We recorded the following metrics:
+    - **Training Time:** The total time to complete 1000 epochs
+    - **Model Accuracy:** Evaluation on the original model accuracy on a validation dataset
+    - **Resource Utilization:**  Monitoring GPU usage and memory consumption
+2. **Comparison over 1000 epochs:** To provide a more specific comparison, we ran both implementations over 1000 epochs. This way we observed:
+    - **Epoch-wise Performance:**  How each library performed per epoch, focusing on both speed and accuracy
+    - **Convergence Rate:**  The rate at which each implementation approached optimal performance.
+
+## Findings
+
+The replication yielded the following results:
+
+(DUMMY VALUES !!!!)
+
+| Metric | PyTorch (24-hour Run) | JAX (24-hour Run) | PyTorch (1000 Epochs) | JAX (1000 Epochs) |
+| --- | --- | --- | --- | --- |
+| Training Time | 24 hours | 24 hours | 50 hours | 40 hours |
+| Final Model Accuracy | 89.5% | 90.0% | 88.0% | 88.5% |
+| CPU/GPU Utilization | 85% | 75% | 80% | 70% |
+| Memory Consumption | 16 GB | 14 GB | 18 GB | 15 GB |
+| Convergence Rate | 0.005% per epoch | 0.006% per epoch | 0.004% per epoch | 0.005% per epoch |
+
+This comparison gives us some key insights: (DUMMY INSIGHTS!!!!)
+
+- **Speed:** [JAX/PyTorch] demonstrated improvements in training speed, since it completed the 24-hour run faster than the PyTorch counterpart.
+- **Accuracy:**  Both implementations achieved similar levels of accuracy, indicating that the JAX translation was faithful to the original PyTorch model.
+- **Resource Utilization:** [JAX/PyTorch] exhibited better resource utilization, particularyly in memory consumption.
+
 ## Results
 
 We are still in the process of running experiments to compare the performance of our JAX/FLAX implementation against the original PyTorch-based model. We plan to provide detailed evaluations in an accompanying notebook, which will include:
@@ -275,6 +312,8 @@ We are still in the process of running experiments to compare the performance of
 - **Comparative FID Scores**: Assessing the quality of generated molecular structures.
 - **Training TIme Analysis**: Evaluating the efficiency gains achieved through the new implementation.
 - **Scalability Tests**: Demonstrating the model’s performance on larger datasets and more complex molecules (?)
+
+
 
 ## Conclusion
 

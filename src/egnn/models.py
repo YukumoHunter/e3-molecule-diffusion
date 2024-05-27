@@ -24,22 +24,26 @@ class EGNN_dynamics_QM9(nn.Module):
     normalization_factor: int = 100
     aggregation_method: str = "sum"
 
+    # 27
     def setup(self):
         self.mode = self.mode
         if self.mode == "egnn_dynamics":
             self.egnn = EGNN(
-                in_node_nf=self.in_node_nf + self.context_node_nf,
-                in_edge_nf=1,
-                hidden_nf=self.hidden_nf,
+                hidden_dim=self.hidden_nf,
+                num_layers=self.n_layers,
                 act_fn=self.act_fn,
-                n_layers=self.n_layers,
-                attention=self.attention,
-                tanh=self.tanh,
-                norm_constant=self.norm_constant,
-                inv_sublayers=self.inv_sublayers,
-                sin_embedding=self.sin_embedding,
-                normalization_factor=self.normalization_factor,
-                aggregation_method=self.aggregation_method,
+                # in_node_nf=self.in_node_nf + self.context_node_nf,
+                # in_edge_nf=1,
+                # hidden_nf=self.hidden_nf,
+                # act_fn=self.act_fn,
+                # n_layers=self.n_layers,
+                # attention=self.attention,
+                # tanh=self.tanh,
+                # norm_constant=self.norm_constant,
+                # inv_sublayers=self.inv_sublayers,
+                # sin_embedding=self.sin_embedding,
+                # normalization_factor=self.normalization_factor,
+                # aggregation_method=self.aggregation_method,
             )
         elif self.mode == "gnn_dynamics":
             raise NotImplementedError

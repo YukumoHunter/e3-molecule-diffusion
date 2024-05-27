@@ -8,28 +8,28 @@ Marina Orozco González, Harold Ruiter, Robin Reitsma, Ricardo Chávez Torres*
 
 
 
-## Section 1: Introduction
+## Introduction
 
 > Discovering 3D molecular structures for medicine or new materials has conventionally been done through human expertise. However, modern deep learning techniques have proven to be a more efficient approach.
 
-Generating 3D molecular structures that are both chemically valid and physically accurate is a critical challenge in computational chemistry and drug discovery. Traditional methods for molecular generation have relied on heuristic and rule-based approaches, which often lack the flexibility ad generalizability required to handle the vast diversity of molecular structures. In the paper we based our project on, the use of a **3D Equivariant Difussion Model (EDM)** that has **Graph Neural Networks**, **Diffusion Models** and **E(3) equivariant** as **key components**, is introduced in order to leverage the symmetries to the Eucliden group in 3 dimensions that molecules have, outperforming previous 3D molecular generative models.
+Generating 3D molecular structures that are both chemically valid and physically accurate is a critical challenge in computational chemistry and drug discovery. Traditional methods for molecular generation have relied on heuristic and rule-based approaches, which often lack the flexibility ad generalizability required to handle the vast diversity of molecular structures. In the paper we based our project on, the use of a **3D Equivariant Diffusion Model (EDM)** that has **Graph Neural Networks**, **Diffusion Models** and **E(3) equivariant** as **key components**, is introduced in order to leverage the symmetries to the Euclidean group in 3 dimensions that molecules have, outperforming previous 3D molecular generative models.
 
-![Generated molecule from the original model](imgs_blogpost\gen_molecule.gif) 
+![Generated molecule from the original model](img/gen_molecule.gif) 
 
-### Section 1.2: Motivation
-The discovery of novel molecules is a crucial step in the development of new products that can be used for drug discovery for the treatment of complex diseases, developing material science and other molecular design related fields.  But finding new chemical compounds with desired properties is a challenging task, as the space of synthesizable molecules is vast and sear in it proves to be very difficult, mostly owing to its discrete nature [(Cao and Kipf, 2022)$ ^{[1]}$](#1--cao-n-d-and-kipf-t-2022-molgan-an-implicit-generative-model-for-small-molecular-graphs). Although conventional molecular design involves the use of human expertise to propose, synthesize and test new molecules, this process can be cost and time intensive, limiting the number and diversity of molecules that can be reasonably explored [(Bilodeau et al., 2022)$ ^{[2]}$](#2--bilodeau-c-jin-w-jaakkola-t-barzilay-r-and-jensen-k-f-2022-generative-models-for-molecular-discovery-recent-advances-and-challenges-wires-computational-molecular-science-125e1608). In deed, it has been estimated that the number of compounds that have ever been synthesized lies around $10^8$ while the total number of theoretically feasible compounds lies between $10^{23}$ and $10^{60}$ (Polishchuk et al., 2013).
+### Motivation
+The discovery of novel molecules is a crucial step in the development of new products that can be used for drug discovery for the treatment of complex diseases, developing material science and other molecular design related fields.  But finding new chemical compounds with desired properties is a challenging task, as the space of synthesizable molecules is vast and sear in it proves to be very difficult, mostly owing to its discrete nature [(Cao and Kipf, 2022)$ ^{[1]}$](#1--cao-n-d-and-kipf-t-2022-molgan-an-implicit-generative-model-for-small-molecular-graphs). Although conventional molecular design involves the use of human expertise to propose, synthesize and test new molecules, this process can be cost and time intensive, limiting the number and diversity of molecules that can be reasonably explored [(Bilodeau et al., 2022)$ ^{[2]}$](#2--bilodeau-c-jin-w-jaakkola-t-barzilay-r-and-jensen-k-f-2022-generative-models-for-molecular-discovery-recent-advances-and-challenges-wires-computational-molecular-science-125e1608). Indeed, it has been estimated that the number of compounds that have ever been synthesized lies around $10^8$ while the total number of theoretically feasible compounds lies between $10^{23}$ and $10^{60}$ (Polishchuk et al., 2013).
 
 In light of this situation, modern deep learning techniques provides an alternative and more efficient approach to achieve this through generative models. There are two characteristics of deep learning that makes it particularly promising when applied to molecules: First, they can cope with “unstructured” data representations such as text sequences, speech signals, images and graphs. Second, deep learning can perform feature extraction from the input data, that is, produce data-driven features from the input data without the need for manual intervention [(Atz et al., 2021)$ ^{[3]}$](#3--kenneth-atz-and-francesca-grisoni-and-gisbert-schneider-2021-ggeometric-deep-learning-on-molecular-representations)
 
-## Section 2: Keypoints
-### Section 2.1: Introduction to Graphs
+## Key points
+### Introduction to Graphs
 Concerning the use of deep learning techniques for molecules generation, according with [(Maziarz et al., 2022)$ ^{[4]}$](#4--maziarz-k-jackson-flux-h-cameron-p-sirockin-f-schneider-n-stiefl-n-segler-m-and-brockschmidt-m-2022-learning-to-extend-molecular-scaffolds-with-structural-motifs), early approaches relied on the textual SMILES representation and on the reuse of architectures from natural language processing. 
 
 However, since 2018 we can observe the use of **Graph Neural Networks (GNN)** for this goal, as stated in [(Cao and Kipf, 2022)$ ^{[1]}$](#1--cao-n-d-and-kipf-t-2022-molgan-an-implicit-generative-model-for-small-molecular-graphs), due to the great improvements that were made on graphs in the area of deep learning during 2017 [(Bronstein et al., 2017)$^{[5]}$](#5-bronstein-m-m-bruna-j-lecun-y-szlam-a-and-vandergheynst-p-2017-geometric-deep-learning-going-beyond-euclidean-data-ieee-signal-processing-magazine-3441842). Using graphs is convenient for this goal as this representation is able to encapsulate crucial structural information for molecules generation. Moreover, is has the benefit that all generated outputs are valid graphs (but not necessarily valid molecules).
 
-![Exemplary molecular representations for a selected molecule a. Two-dimensional depiction b. Molecular graph (2D) composed of vertices (atoms) and edges (bonds). (Atz et al., 2021)](imgs_blogpost\graph_mol.png)
+![Exemplary molecular representations for a selected molecule a. Two-dimensional depiction b. Molecular graph (2D) composed of vertices (atoms) and edges (bonds). (Atz et al., 2021)](img/graph_mol.png)
 
-### Section 2.2: Introduction to  Diffusion Models
+### Introduction to  Diffusion Models
 As we said, the paper we used as baseline, [Hoogeboom et al. (2022)$^{[6]}$](#6-hoogeboom-e-satorras-v-g-vignac-c-and-welling-m-2022-equivariant-diffusion-for-molecule-generation-in-3d), combines the use of **GNN** with **Diffusion Models (DMs)**, standing as the first Diffusion Model that generates molecules in 3D space. 
 
 The use of Diffusion Models have gained more attention since the introduction of the Diffusion Probabilistic Models (DPMs) framework by [Dhariwal and Nichol (2021)$^{[7]}$](#7-dhariwal-p-and-nichol-a-2021-diffusion-models-beat-gans-on-image-synthesis) in 2020. They have shown remarkable success in generating high-quality data across various domains, including image synthesis and audio generation. 
@@ -38,22 +38,22 @@ These models operate by iteratively denoising a sample starting from pure noise,
 
 In contrast to other generative models, in diffusion models the generative process is defined with respect to the _true denoising process_, which is known after modelling the reverse process of diffusion to a certain given data point **$x_0$**.
 
-![Picture from](imgs_blogpost\diffusion_cat.png)
+![Picture from](img/diffusion_cat.png)
 
-### Section 2.3: Introduction to Equivariance transformations
+### Introduction to Equivariance transformations
 
 A function f is said to be equivariant to the action of a group
 G if:
 
 $$T_g(f(\mathbf{x}))=f(S_g(\mathbf{x})), \forall g \in G$$
 
-Where $S_g, T_g$ are linear representations related to the group element $g$ ([Serre (1977) $^{[8]}$](#8-j-p-serre-1977-linear-representations-of-finite-groups)). In this work, we only consider the Eucliden group E(3) generated by translations, rotations and reflections. In this case, become a translation $\mathbf{t}$ and an orthogonal matrix $\mathbf{R}$ that rotates or reflects coordinates. We will have then that the function $f$ is equivariant to a rotatio or reflection $\mathbf{R}$ if:
+Where $S_g, T_g$ are linear representations related to the group element $g$ ([Serre (1977) $^{[8]}$](#8-j-p-serre-1977-linear-representations-of-finite-groups)). In this work, we only consider the Euclidean group E(3) generated by translations, rotations and reflections. In this case, become a translation $\mathbf{t}$ and an orthogonal matrix $\mathbf{R}$ that rotates or reflects coordinates. We will have then that the function $f$ is equivariant to a rotatio or reflection $\mathbf{R}$ if:
 
 $$\mathbf{R} f(\mathbf{x})=f(\mathbf{Rx})$$
 
 The reason why using an equivariance approach for molecule generation is convenient lies on the inherent symmetries of molecular structures to those transformations. By leveraging symmetries, equivariant models can reduce redundant computations. For instance, once a particular arrangement is learned, its symmetric counterparts are automatically accounted for, which can lead to more efficient training and inference processes.
 
-### 2.4: EDM: E(3) Equivariance Diffusion Model for molecules generation
+### EDM: E(3) Equivariance Diffusion Model for molecules generation
 
 In this work interactions between all atoms are considered and model through a fully connected graph $\mathcal{G}$ with nodes $v_i \in \mathcal{V}$. Each node $v_i$ has associated a coordinate representation $\mathbf{x}_i \in \mathbb{R}^3$ and an attribute vector $ \mathbf{h}_i \in \mathbb{R}^d$ .
 
@@ -63,8 +63,7 @@ $$ \hat{\mathbf{x}}_h, \hat{\mathbf{h}} = EGNN[\mathbf{x}^0, \mathbf{h}^0 ] $$
 
 Which satisfies the required equivariant property we saw before in \ref{nosé}.
 
-### Section 2.5: Introduction to JAX
-#### Section 2.5.1: JAX
+### Introduction to JAX
 
 JAX is an open-source library for numerical computing that combines automatic differentiation with the capability to run code on GPUs and TPUs. Created by Google Research, JAX serves as a high-performance alternative to PyTorch and NumPy, enhanced by gradient-based optimization and just-in-time compilation.
 
@@ -75,13 +74,13 @@ JAX's key features make it particularly effective for machine learning:
 3. **Accelerator Support:** JAX code can run on CPUs, GPUs, and TPUs with few changes, offering great versatility.
 4. **Composable Function Transformations:** JAX supports composable transformations like 'grad' for gradients, 'jit' for just-in-time compilation, 'vmap' for vectorization, and 'pmap' for parallelization across devices.
 
-#### Section 2.5.2: JIT paradigm
+#### JIT paradigm
 Just-In-Time (JIT) compilation is a standout feature in JAX. It optimizes code by converting Python functions into efficient machine code, which can be run on accelerators.
 
 - **JIT Usage:** In JAX, the '@jit' decorator marks functions for JIT compilation. When used, JAX employs the XLA compiler to turn the function into machine code. This involves tracing the function to create a computation graph, which XLA then compiles.
 - **Performance Impact:** JIT compilation can greatly improve performance, especially for intensive tasks. By optimizing the computation graph and fusing operations, XLA cuts down on the overhead from Python’s dynamic nature and speeds up execution.
 
-#### Section 2.5.3: XLA
+#### XLA
 XLA (Accelerated Linear Algebra) is a specialized compiler that optimizes machine learning computations. It's crucial to JAX’s performance and offers several benefits:
 
 - **Compilation Process:** XLA processes the computation graph from JAX and optimizes it through operation fusion, constant folding, and kernel generation. These optimizations reduce memory use and speed up execution.

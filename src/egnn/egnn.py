@@ -39,8 +39,16 @@ def custom_xavier_uniform_init(gain=0.001):
 
     return init
 
-
-def build_fn(hidden_dim, act_fn):
+class AttMLP(nn.Module):
+    @nn.compact
+    def __call__(self, x):
+        out = nn.Sequential(
+            nn.Dense(1),
+            nn.sigmoid(),
+            )(x)
+        return out
+    
+def build_fn(hidden_dim, act_fn, attention):
     """
     EGNN primitives as functions
         1. message function (eq. 3)
@@ -61,6 +69,12 @@ def build_fn(hidden_dim, act_fn):
         out = jnp.concatenate([h_i, h_j, dist, edge_attr], axis=1)
 
         out = phi_e(out)
+
+        if attention:
+            att_val = nn.Sequential([
+                nn.Dense(1),
+                nn.sigmoid()])(out)
+            out = out * att_val
 
         if edge_mask is not None:
             out = out * edge_mask
@@ -111,11 +125,12 @@ class EGNN_layer(nn.Module):
     hidden_dim: int
     act_fn: callable
     norm_constant = 1
+    attention: bool = True
 
     @nn.compact
     def __call__(self, edge_index, h, x, edge_attr, node_mask, edge_mask):  #EquivariantBlock
         # get primitives
-        message_fn, agg_update_fn, pos_agg_update_fn = build_fn(self.hidden_dim, self.act_fn)
+        message_fn, agg_update_fn, pos_agg_update_fn = build_fn(self.hidden_dim, self.act_fn, self.attention)
         # compute the distance between connected nodes
         dist = compute_radial(edge_index, x, norm_constant=self.norm_constant)
         # message -> aggregation -> node update, position update

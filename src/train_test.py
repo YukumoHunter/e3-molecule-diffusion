@@ -15,10 +15,90 @@ from qm9 import losses
 import time
 import tqdm
 import torch
+from flax.training.train_state import TrainState
 
 import jax
 import jax.numpy as jnp
+from jax import random
 import optax
+
+
+######
+def create_train_step(key, model, optim, dataloader, args):
+    data = next(iter(dataloader))
+    x = data["positions"]
+    node_mask = jnp.expand_dims(data["atom_mask"], 2)
+    edge_mask = data["edge_mask"]
+    one_hot = data["one_hot"]
+    charges = data["charges"] if args.include_charges else jnp.zeros(0)
+    h = {"categorical": one_hot, "integer": charges}
+    context = None
+    bs, n_nodes, n_dims = x.shape
+    edge_mask = jnp.reshape(edge_mask, shape = (bs, n_nodes * n_nodes))
+    params = model.init(key, x, h, node_mask, edge_mask, context)
+
+    state = TrainState.create(apply_fn=model.apply, params=params, tx=optim)
+
+    # def loss_fn(state, batch, keys):
+    def loss_fn(state, nodes_dist, x, h, node_mask, edge_mask, context, key):
+        bs, n_nodes, n_dims = x.shape
+        edge_mask = jnp.reshape(edge_mask, (bs, n_nodes * n_nodes))
+        nll = state.appy_fn(state.params, x, h, node_mask, edge_mask, context)
+
+        N = jnp.sum(node_mask.squeeze(axis=2), axis=1).astype(jnp.int64)
+        log_pN = nodes_dist.log_prob(N)
+
+
+
+
+        reduce_dims = list(range(1, len(x.shape)))
+        c = jax.nn.one_hot(c, num_classes)
+
+        recon, mean, logvar = state.apply_fn(state.params, x, h, node_mask, edge_mask, context)
+        mse_loss = optax.l2_loss(recon, x).sum(axis=reduce_dims).mean()
+        kl_loss = jnp.mean(-0.5 * jnp.sum(1 + logvar - mean ** 2 - jnp.exp(logvar), axis=reduce_dims))
+
+        loss = mse_loss + kl_weight * kl_loss
+        return loss, (mse_loss, kl_loss)
+
+
+    def train_step(state, data, nodes_dist, key):
+        x = data["positions"]
+        node_mask = jnp.expand_dims(data["atom_mask"], 2)
+        edge_mask = data["edge_mask"]
+        one_hot = data["one_hot"]
+        charges = data["charges"] if args.include_charges else jnp.zeros(0)
+
+        x = remove_mean_with_mask(x, node_mask)
+        # key1, key2, key3 = random.split(key, 3)
+        # if args.augment_noise > 0:
+        #     # Add noise eps ~ N(0, augment_noise) around points.
+        #     eps = sample_center_gravity_zero_gaussian_with_mask(key1, x.shape, x, node_mask)
+        #     x = x + eps * args.augment_noise
+
+        x = remove_mean_with_mask(x, node_mask)
+        # if args.data_augmentation: #defaul false
+        #     x = utils.random_rotation(x)
+
+        # check_mask_correct([x, one_hot, charges], node_mask)
+        # assert_mean_zero_with_mask(x, node_mask)
+
+        h = {"categorical": one_hot, "integer": charges}
+
+        # if len(args.conditioning) > 0: #default None
+        #     context = qm9utils.prepare_context(args.conditioning, data, property_norms)
+        #     assert_correctly_masked(context, node_mask)
+        # else:
+        context = None
+
+        losses, grads = jax.value_and_grad(loss_fn, has_aux=True)(state, nodes_dist, x, h, node_mask, edge_mask, context, key)
+        loss, (mse_loss, kl_loss) = losses
+
+        state = state.apply_gradients(grads=grads)
+
+        return state, loss, mse_loss, kl_loss
+
+    return train_step, state
 
 
 # ME
@@ -58,7 +138,26 @@ def train_epoch(state, data_loader, num_epochs=100):
             # For simplicity, we skip this part here
     return state
 
+x = jnp.ones((1, 2))
+y = jnp.ones((1, 2))
+model = nn.Dense(2)
+variables = model.init(jax.random.key(0), x)
+tx = optax.adam(1e-3)
+state = TrainState.create(
+    apply_fn=model.apply,
+    params=variables['params'],
+    tx=tx)
+def loss_fn(params, x, y):
+  predictions = state.apply_fn({'params': params}, x)
+  loss = optax.l2_loss(predictions=predictions, targets=y).mean()
+  return loss
+loss_fn(state.params, x, y)
+Array(3.3514676, dtype=float32)
+grads = jax.grad(loss_fn)(state.params, x, y)
+state = state.apply_gradients(grads=grads)
+loss_fn(state.params, x, y)
 
+#############################
 # ORIGINAL
 # I removed device
 def train_epoch(
@@ -70,40 +169,42 @@ def train_epoch(
     model_ema,
     ema,
     dtype,
-    property_norms,
+    property_norms, #None
     optim,
     nodes_dist,
-    gradnorm_queue,
+    # gradnorm_queue,
     dataset_info,
-    prop_dist,
+    prop_dist, #None
+    rng
 ):
     # model.train()
     nll_epoch = []
     n_iterations = len(loader)
     for i, data in enumerate(loader):
         x = data["positions"]
-        node_mask = data["atom_mask"].unsqueeze(2)
+        node_mask = jnp.expand_dims(data["atom_mask"], 2)
         edge_mask = data["edge_mask"]
         one_hot = data["one_hot"]
-        charges = data["charges"] if args.include_charges else torch.zeros(0)
+        charges = data["charges"] if args.include_charges else jnp.zeros(0)
 
         x = remove_mean_with_mask(x, node_mask)
 
         if args.augment_noise > 0:
+            rng, key_sample_gaussian = random.split(rng, 2)
             # Add noise eps ~ N(0, augment_noise) around points.
-            eps = sample_center_gravity_zero_gaussian_with_mask(x.size(), x, node_mask)
+            eps = sample_center_gravity_zero_gaussian_with_mask(key_sample_gaussian, x.shape, x, node_mask)
             x = x + eps * args.augment_noise
 
         x = remove_mean_with_mask(x, node_mask)
-        if args.data_augmentation:
-            x = utils.random_rotation(x).detach()
+        if args.data_augmentation: #defaul false
+            x = utils.random_rotation(x)
 
         check_mask_correct([x, one_hot, charges], node_mask)
         assert_mean_zero_with_mask(x, node_mask)
 
         h = {"categorical": one_hot, "integer": charges}
 
-        if len(args.conditioning) > 0:
+        if len(args.conditioning) > 0: #default None
             context = qm9utils.prepare_context(args.conditioning, data, property_norms)
             assert_correctly_masked(context, node_mask)
         else:
@@ -119,16 +220,16 @@ def train_epoch(
         loss = nll + args.ode_regularization * reg_term
         loss.backward()
 
-        if args.clip_grad:
-            grad_norm = utils.gradient_clipping(model, gradnorm_queue)
-        else:
-            grad_norm = 0.0
+        # if args.clip_grad:
+        #     grad_norm = utils.gradient_clipping(model, gradnorm_queue)
+        # else:
+        #     grad_norm = 0.0
 
         optim.step()
 
         # Update EMA if enabled.
-        if args.ema_decay > 0:
-            ema.update_model_average(model_ema, model)
+        # if args.ema_decay > 0:
+        #     ema.update_model_average(model_ema, model)
 
         if i % args.n_report_steps == 0:
             print(

@@ -15,14 +15,17 @@ def segment_mean(data, segment_ids, num_segments):
     return segment_means
 
 
-def compute_radial(edge_index, x):
+def compute_radial(edge_index, x, norm_constant = 1):
     """
     Compute x_i - x_j and ||x_i - x_j||^2.
     """
     senders, receivers = edge_index
     x_i, x_j = x[senders], x[receivers]
-    distance = jnp.sum((x_i - x_j) ** 2, axis=1, keepdims=True)
-    return distance
+    coord_diff = x_i - x_j
+    radial = jnp.sum((coord_diff) ** 2, axis=1, keepdims=True)
+    norm = jnp.sqrt(radial + 1e-8)
+    coord_diff = coord_diff / (norm + norm_constant)
+    return radial, coord_diff
 
 
 def custom_xavier_uniform_init(gain=0.001):
@@ -107,14 +110,14 @@ def build_fn(hidden_dim, act_fn):
 class EGNN_layer(nn.Module):
     hidden_dim: int
     act_fn: callable
-
+    norm_constant = 1
 
     @nn.compact
     def __call__(self, edge_index, h, x, edge_attr, node_mask, edge_mask):  #EquivariantBlock
         # get primitives
         message_fn, agg_update_fn, pos_agg_update_fn = build_fn(self.hidden_dim, self.act_fn)
         # compute the distance between connected nodes
-        dist = compute_radial(edge_index, x)
+        dist = compute_radial(edge_index, x, norm_constant=self.norm_constant)
         # message -> aggregation -> node update, position update
         #GCL
         m_ij = message_fn(edge_index, h, dist, edge_attr, edge_mask)
@@ -132,23 +135,26 @@ class EGNN_layer(nn.Module):
 
 class EGNN(nn.Module):
     hidden_dim: int
-    out_dim = None
-    num_layers: int 
+    out_dim: int = None
+    num_layers: int
     act_fn: callable = jax.nn.silu
 
-    if out_dim is None:
-        out_dim = hidden_dim
+    def setup(self):
+        if self.out_dim is None:
+            self.out_dim = self.hidden_dim
 
-    @nn.compact
-    def __call__(self, edge_index, h, x, node_mask = None, edge_mask = None):
-        
-        distances = compute_radial(edge_index, x) #27
-        h = nn.Dense(self.hidden_dim)(h)
+        self.initial_dense = nn.Dense(self.hidden_dim)
+        self.egnn_layers = [EGNN_layer(self.hidden_dim, self.act_fn) for _ in range(self.num_layers)]
+        self.output_dense = nn.Dense(self.out_dim)
 
-        for _ in range(self.num_layers):
-            h, x = EGNN_layer(self.hidden_dim, self.act_fn)(edge_index, h, x, edge_attr = distances, node_mask = node_mask, edge_mask = edge_mask)
+    def __call__(self, edge_index, h, x, node_mask=None, edge_mask=None):
+        distances = compute_radial(edge_index, x)  # Assuming compute_radial is defined elsewhere
+        h = self.initial_dense(h)
 
-        h = nn.Dense(self.out_dim)(h)
+        for layer in self.egnn_layers:
+            h, x = layer(edge_index, h, x, edge_attr=distances, node_mask=node_mask, edge_mask=edge_mask)
+
+        h = self.output_dense(h)
         if node_mask is not None:
             h = h * node_mask
         return h, x

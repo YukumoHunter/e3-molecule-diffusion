@@ -78,7 +78,7 @@ def gradient_clipping(gradnorm_queue: Queue, max_len=50):
     return optax.GradientTransformation(init_fn, update_fn)
 
 # Use the custom gradient clipping in AdamW_with_amsgrad
-def AdamW_with_amsgrad(
+def AdamW_with_amsgrad_clipping_ema(
     learning_rate: float = 0.001,
     b1: float = 0.9,
     b2: float = 0.999,
@@ -88,6 +88,7 @@ def AdamW_with_amsgrad(
     mu_dtype = None,
     mask = None,
     gradnorm_queue = None,
+    ema_decay = 0.9999
 ):
     if gradnorm_queue:
         queue = Queue(max_len=gradnorm_queue)
@@ -97,14 +98,16 @@ def AdamW_with_amsgrad(
             b1=b1, b2=b2, eps=eps, eps_root=eps_root, mu_dtype=mu_dtype),
             optax.add_decayed_weights(weight_decay, mask),
             optax.scale_by_learning_rate(learning_rate),
-            gradient_clipping(queue)
+            gradient_clipping(queue),
+            optax.ema(decay = ema_decay)
         )
     else:
         return optax.chain(
             optax.scale_by_amsgrad(
             b1=b1, b2=b2, eps=eps, eps_root=eps_root, mu_dtype=mu_dtype),
             optax.add_decayed_weights(weight_decay, mask),
-            optax.scale_by_learning_rate(learning_rate)
+            optax.scale_by_learning_rate(learning_rate),
+            optax.ema(decay = ema_decay)
         )
 
 

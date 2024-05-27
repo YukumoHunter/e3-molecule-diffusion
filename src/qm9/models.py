@@ -6,7 +6,7 @@ import jax.random as random
 
 import numpy as np
 from egnn.models import EGNN_dynamics_QM9
-from src.utils import AdamW_with_amsgrad
+from utils import AdamW_with_amsgrad_clipping_ema
 from equivariant_diffusion.en_diffusion import EnVariationalDiffusion
 
 # 27
@@ -62,7 +62,10 @@ def get_model(args, dataset_info, dataloader_train):
 
 
 def get_optim(args):
-    optimizer = AdamW_with_amsgrad(learning_rate=args.lr, weight_decay=1e-12, gradnorm_queue = 50)
+    optimizer = AdamW_with_amsgrad_clipping_ema(learning_rate=args.lr, 
+                                                weight_decay=1e-12, 
+                                                gradnorm_queue = 50,
+                                                ema_decay=args.ema_decay)
     return optimizer
 
 

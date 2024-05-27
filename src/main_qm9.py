@@ -289,7 +289,7 @@ def main():
     model_dp = model
 
     # Initialize model copy for exponential moving average of params.
-    if args.ema_decay > 0:
+    if args.ema_decay > 0: 
         model_ema = copy.deepcopy(model)
         ema = flow_utils.EMA(args.ema_decay)
 

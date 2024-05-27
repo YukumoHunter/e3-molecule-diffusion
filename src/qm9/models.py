@@ -1,11 +1,12 @@
 import jax
 import jax.numpy as jnp
 import optax
+from optax._src import combine, transform
 import jax.random as random
 
 import numpy as np
 from egnn.models import EGNN_dynamics_QM9
-
+from src.utils import AdamW_with_amsgrad
 from equivariant_diffusion.en_diffusion import EnVariationalDiffusion
 
 
@@ -60,8 +61,8 @@ def get_model(args, dataset_info, dataloader_train):
         raise ValueError(args.probabilistic_model)
 
 
-def get_optim(args, generative_model):
-    optimizer = optax.adamw(learning_rate=args.lr, weight_decay=1e-12)
+def get_optim(args):
+    optimizer = AdamW_with_amsgrad(learning_rate=args.lr, weight_decay=1e-12, gradnorm_queue = 50)
     return optimizer
 
 

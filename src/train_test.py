@@ -47,27 +47,21 @@ def create_train_step(key, model, optim, dataloader, args):
 
         N = jnp.sum(node_mask.squeeze(axis=2), axis=1).astype(jnp.int64)
         log_pN = nodes_dist.log_prob(N)
+        nll = nll - log_pN
+        nll = nll.mean(0)
+        reg_term = jnp.array([0.0])
+        mean_abs_z = 0.0
+        nll, reg_term, mean_abs_z
+        loss = nll + args.ode_regularization * reg_term
+        return loss, (nll,reg_term)
 
 
-
-
-        reduce_dims = list(range(1, len(x.shape)))
-        c = jax.nn.one_hot(c, num_classes)
-
-        recon, mean, logvar = state.apply_fn(state.params, x, h, node_mask, edge_mask, context)
-        mse_loss = optax.l2_loss(recon, x).sum(axis=reduce_dims).mean()
-        kl_loss = jnp.mean(-0.5 * jnp.sum(1 + logvar - mean ** 2 - jnp.exp(logvar), axis=reduce_dims))
-
-        loss = mse_loss + kl_weight * kl_loss
-        return loss, (mse_loss, kl_loss)
-
-
-    def train_step(state, data, nodes_dist, key):
-        x = data["positions"]
-        node_mask = jnp.expand_dims(data["atom_mask"], 2)
-        edge_mask = data["edge_mask"]
-        one_hot = data["one_hot"]
-        charges = data["charges"] if args.include_charges else jnp.zeros(0)
+    def train_step(state, batch, nodes_dist, key):
+        x = batch["positions"]
+        node_mask = jnp.expand_dims(batch["atom_mask"], 2)
+        edge_mask = batch["edge_mask"]
+        one_hot = batch["one_hot"]
+        charges = batch["charges"] if args.include_charges else jnp.zeros(0)
 
         x = remove_mean_with_mask(x, node_mask)
         # key1, key2, key3 = random.split(key, 3)
@@ -86,32 +80,19 @@ def create_train_step(key, model, optim, dataloader, args):
         h = {"categorical": one_hot, "integer": charges}
 
         # if len(args.conditioning) > 0: #default None
-        #     context = qm9utils.prepare_context(args.conditioning, data, property_norms)
+        #     context = qm9utils.prepare_context(args.conditioning, batch, property_norms)
         #     assert_correctly_masked(context, node_mask)
         # else:
         context = None
 
         losses, grads = jax.value_and_grad(loss_fn, has_aux=True)(state, nodes_dist, x, h, node_mask, edge_mask, context, key)
-        loss, (mse_loss, kl_loss) = losses
+        loss, (nll, reg_term) = losses
 
         state = state.apply_gradients(grads=grads)
 
-        return state, loss, mse_loss, kl_loss
+        return state, loss, nll, reg_term
 
     return train_step, state
-
-
-# ME
-def calculate_loss_acc(state, params, batch):
-    data_input, labels = batch
-    # Obtain the logits and predictions of the model for the input data
-    logits = state.apply_fn(params, data_input).squeeze(axis=-1)
-    pred_labels = (logits > 0).astype(jnp.float32)
-    # Calculate the loss and accuracy
-    loss = optax.sigmoid_binary_cross_entropy(logits, labels).mean()
-    acc = (pred_labels == labels).mean()
-    return loss, acc
-
 
 @jax.jit  # Jit the function for efficiency
 def train_step(state, batch):

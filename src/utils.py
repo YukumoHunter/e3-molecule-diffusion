@@ -35,7 +35,7 @@ def load_model(path):
 # Gradient clipping
 class Queue:
     def __init__(self, max_len=50):
-        self.items = []
+        self.items = [3000]
         self.max_len = max_len
 
     def __len__(self):

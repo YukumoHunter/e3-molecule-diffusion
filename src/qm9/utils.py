@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 
-
+##
 def compute_mean_mad(dataloaders, properties, dataset_name):
     if dataset_name == "qm9":
         return compute_mean_mad_from_dataloader(dataloaders["train"], properties)
@@ -9,7 +9,7 @@ def compute_mean_mad(dataloaders, properties, dataset_name):
     else:
         raise Exception("Wrong dataset name")
 
-
+##
 def compute_mean_mad_from_dataloader(dataloader, properties):
     property_norms = {}
     for property_key in properties:
@@ -58,7 +58,7 @@ def preprocess_input(one_hot, charges, charge_power, charge_scale, device):
     )
     return atom_scalars
 
-
+##
 def prepare_context(conditioning, minibatch, property_norms):
     batch_size, n_nodes, _ = minibatch["positions"].shape
     node_mask = jnp.expand_dims(minibatch["atom_mask"], 2)

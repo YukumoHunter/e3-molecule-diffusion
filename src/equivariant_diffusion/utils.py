@@ -32,7 +32,7 @@ def remove_mean(x):
 
 
 def remove_mean_with_mask(x, node_mask):
-    masked_max_abs_value = (x * (1 - node_mask)).abs().sum().item()
+    masked_max_abs_value = (x * (~node_mask)).abs().sum().item()
     assert masked_max_abs_value < 1e-5, f"Error {masked_max_abs_value} too high"
     N = jnp.sum(node_mask, axis=1, keepdims=True)
 

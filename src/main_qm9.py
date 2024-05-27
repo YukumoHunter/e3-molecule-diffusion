@@ -62,7 +62,7 @@ parser.add_argument(
 parser.add_argument("--diffusion_loss_type", type=str, default="l2", help="vlb, l2")
 
 parser.add_argument("--n_epochs", type=int, default=200)
-parser.add_argument("--batch_size", type=int, default=128)
+parser.add_argument("--batch_size", type=int, default=64)
 parser.add_argument("--lr", type=float, default=2e-4)
 parser.add_argument("--brute_force", type=eval, default=False, help="True | False")
 parser.add_argument("--actnorm", type=eval, default=True, help="True | False")
@@ -247,7 +247,7 @@ if len(args.conditioning) > 0:
     print(f"Conditioning on {args.conditioning}")
     property_norms = compute_mean_mad(dataloaders, args.conditioning, args.dataset)
     context_dummy = prepare_context(args.conditioning, data_dummy, property_norms)
-    context_node_nf = context_dummy.size(2)
+    context_node_nf = context_dummy.shape[2]
 else:
     context_node_nf = 0
     property_norms = None
@@ -262,7 +262,7 @@ key, subkey = random.split(key)
 # Create EGNN flow
 model, nodes_dist, prop_dist = get_model(
     subkey, args, dataset_info, dataloaders["train"]
-)
+) #if args.conditionining == [] then prop_dist = None
 if prop_dist is not None:
     prop_dist.set_normalizer(property_norms)
 optim = get_optim(args, model)

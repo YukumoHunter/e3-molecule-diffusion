@@ -9,10 +9,10 @@ from egnn.models import EGNN_dynamics_QM9
 from equivariant_diffusion.en_diffusion import EnVariationalDiffusion
 
 
-def get_model(rng_key, args, dataset_info, dataloader_train):
+def get_model(args, dataset_info, dataloader_train):
     histogram = dataset_info["n_nodes"]
     in_node_nf = len(dataset_info["atom_decoder"]) + int(args.include_charges)
-    nodes_dist = DistributionNodes(histogram, rng_key)
+    nodes_dist = DistributionNodes(histogram)
 
     prop_dist = None
     if len(args.conditioning) > 0:
@@ -62,12 +62,11 @@ def get_model(rng_key, args, dataset_info, dataloader_train):
 
 def get_optim(args, generative_model):
     optimizer = optax.adamw(learning_rate=args.lr, weight_decay=1e-12)
-
     return optimizer
 
 
 class DistributionNodes:
-    def __init__(self, histogram, rng_key):
+    def __init__(self, histogram):
         self.n_nodes = []
         prob = []
         self.keys = {}
@@ -85,23 +84,25 @@ class DistributionNodes:
         entropy = jnp.sum(self.prob * jnp.log(self.prob + 1e-30))
         print("Entropy of n_nodes: H[N]", entropy.item())
 
-        key, subkey = random.split(rng_key)
+        # key, subkey = random.split(rng_key)
 
-        self.m = random.categorical(key=subkey, logits=prob)
+        # self.m = random.categorical(key=subkey, logits=prob)
 
-    def sample(self, n_samples=1):
-        idx = self.m.sample((n_samples,))
+    def sample(self, rng, n_samples=1):
+
+        idx = random.choice(rng, len(self.n_nodes), shape = (n_samples,), p = self.prob)
+        # idx = random.categorical(key=rng, logits=self.prob)
         return self.n_nodes[idx]
 
     def log_prob(self, batch_n_nodes):
-        assert len(batch_n_nodes.size()) == 1
+        assert batch_n_nodes.ndim == 1
 
         idcs = [self.keys[i.item()] for i in batch_n_nodes]
-        idcs = jnp.array(idcs).to(batch_n_nodes.device)
+        idcs = jnp.array(idcs).to(batch_n_nodes)
 
         log_p = jnp.log(self.prob + 1e-30)
 
-        log_p = log_p.to(batch_n_nodes.device)
+        log_p = log_p.to(batch_n_nodes)
 
         log_probs = log_p[idcs]
 
@@ -146,12 +147,15 @@ class DistributionProperty:
             # We move it to bin int(n_bind-1 if tat happens)
             if i == n_bins:
                 i = n_bins - 1
-            histogram[i] += 1
+            # histogram[i] += 1
+            histogram = histogram.at[i].add(1)
+
         probs = histogram / jnp.sum(histogram)
+        # self.probs = probs
 
-        key, subkey = random.split(rng_key)
+        # key, subkey = random.split(rng_key)
 
-        probs = random.categorical(key=subkey, logits=probs)
+        # probs = random.categorical(key=subkey, logits=probs)
         params = [prop_min, prop_max]
         return probs, params
 
@@ -161,21 +165,23 @@ class DistributionProperty:
         mad = self.normalizer[prop]["mad"]
         return (tensor - mean) / mad
 
-    def sample(self, n_nodes=19):
+    def sample(self, rng, n_nodes=19):
         vals = []
         for prop in self.properties:
             dist = self.distributions[prop][n_nodes]
-            idx = dist["probs"].sample((1,))
-            val = self._idx2value(idx, dist["params"], len(dist["probs"].probs))
+            rng, subkey1, subkey2 = random.split(rng, 3)
+            idx = random.categorical(key=subkey1, logits=jnp.log(dist["probs"]))
+            val = self._idx2value(subkey2, idx, dist["params"], len(dist["probs"]))
             val = self.normalize_tensor(val, prop)
             vals.append(val)
         vals = jnp.concatenate(vals)
         return vals
 
-    def sample_batch(self, nodesxsample):
+    def sample_batch(self, rng, nodesxsample):
         vals = []
         for n_nodes in nodesxsample:
-            vals.append(self.sample(int(n_nodes)).unsqueeze(0))
+            rng, subkey = random.split(rng)
+            vals.append(jnp.expand_dims(self.sample(subkey,int(n_nodes)), 0))
         vals = jnp.concatenate(vals, dim=0)
         return vals
 
@@ -192,4 +198,4 @@ if __name__ == "__main__":
     print(dist_nodes.n_nodes)
     print(dist_nodes.prob)
     for i in range(10):
-        print(dist_nodes.sample())
+        print(dist_nodes.sample(random.key(0)))

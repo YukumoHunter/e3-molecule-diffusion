@@ -258,7 +258,7 @@ Puting them together: EQUIVARIANT DIFFUSION MODEL
 
 </aside>
 
-## Section 3: Our contribution
+## Our contribution
 
 Our primary contribution is the re-implementation of the original EDM from ([Hogeboom (2022)$^{[6]}$](#6-hoogeboom-e-satorras-v-g-vignac-c-and-welling-m-2022-equivariant-diffusion-for-molecule-generation-in-3d)) in the JAX/FLAX framework. JAX, with its ability to automatically differentiate through native Python and Numpy functions, and FLAX, which provides a high-level interface for neural network building, collectively offer significant advantages in terms of performance and flexibility.
 
@@ -268,7 +268,7 @@ By porting the model to JAX/FLAX, we aim to:
 2. **Enhance Scalability**: The new implementation can leverage distributed computing resources more effectively, allowing for training on larger datasets and more complex models.
 3. **Facilitate Research and Development**: The modular and flexible nature of FLAX makes it easier for researchers to experiment with different model architectures and training regimes.
 
-## Section 4: Results
+## Results
 
 We are still in the process of running experiments to compare the performance of our JAX/FLAX implementation against the original PyTorch-based model. We plan to provide detailed evaluations in an accompanying notebook, which will include:
 
@@ -276,7 +276,7 @@ We are still in the process of running experiments to compare the performance of
 - **Training TIme Analysis**: Evaluating the efficiency gains achieved through the new implementation.
 - **Scalability Tests**: Demonstrating the model’s performance on larger datasets and more complex molecules (?)
 
-## Section 5: Conclusion
+## Conclusion
 
 In conclusion, the E(3) Equivariant Diffusion Model represents a significant advancement in the field of molecular generation, providing a robust framework for generating 3D molecules with high fidelity.
 

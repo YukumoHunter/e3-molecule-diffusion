@@ -15,7 +15,7 @@ def segment_mean(data, segment_ids, num_segments):
     return segment_means
 
 
-def compute_radial(edge_index, x, norm_constant = 1):
+def compute_radial(edge_index, x, norm_constant=1):
     """
     Compute x_i - x_j and ||x_i - x_j||^2.
     """
@@ -39,15 +39,17 @@ def custom_xavier_uniform_init(gain=0.001):
 
     return init
 
+
 class AttMLP(nn.Module):
     @nn.compact
     def __call__(self, x):
         out = nn.Sequential(
             nn.Dense(1),
             nn.sigmoid(),
-            )(x)
+        )(x)
         return out
-    
+
+
 def build_fn(hidden_dim, act_fn, attention):
     """
     EGNN primitives as functions
@@ -55,13 +57,19 @@ def build_fn(hidden_dim, act_fn, attention):
         2. message aggregation + node update (eq. 5,6)
         3. message aggregation + positional update (eq. 4)
     """
+
     # 27
-    def message_fn(edge_index, h, dist, edge_attr, edge_mask): #edge_model
+    def message_fn(edge_index, h, dist, edge_attr, edge_mask):  # edge_model
         """
         Message: m_ij = phi_e(h_i^l, h_j^l, ||x_i^l - x_j^l||^2, a_ij)
         """
         phi_e = nn.Sequential(
-            [nn.Dense(hidden_dim), act_fn, nn.Dense(hidden_dim), act_fn]  #is like edge_mlp
+            [
+                nn.Dense(hidden_dim),
+                act_fn,
+                nn.Dense(hidden_dim),
+                act_fn,
+            ]  # is like edge_mlp
         )
 
         senders, receivers = edge_index
@@ -71,9 +79,7 @@ def build_fn(hidden_dim, act_fn, attention):
         out = phi_e(out)
 
         if attention:
-            att_val = nn.Sequential([
-                nn.Dense(1),
-                nn.sigmoid()])(out)
+            att_val = nn.Sequential([nn.Dense(1), nn.sigmoid()])(out)
             out = out * att_val
 
         if edge_mask is not None:
@@ -87,7 +93,9 @@ def build_fn(hidden_dim, act_fn, attention):
 
         Node update: h_i^{l+1} = phi_h(h_i^l, m_i)
         """
-        phi_h = nn.Sequential([nn.Dense(hidden_dim), act_fn, nn.Dense(hidden_dim)]) #node_mlp
+        phi_h = nn.Sequential(
+            [nn.Dense(hidden_dim), act_fn, nn.Dense(hidden_dim)]
+        )  # node_mlp
 
         senders, _ = edge_index
         m_i = jax.ops.segment_sum(m_ij, senders, num_segments=h_i.shape[0])
@@ -95,11 +103,11 @@ def build_fn(hidden_dim, act_fn, attention):
 
         return h_i + phi_h(out)
 
-    def pos_agg_update_fn(edge_index, x, m_ij, node_mask): #EquivariantUpdate
+    def pos_agg_update_fn(edge_index, x, m_ij, node_mask):  # EquivariantUpdate
         """
         Positional update: x_i^{l+1} = x_i^l + mean_{j!=i} (x_i^l - x_j^l) phi_x(m_ij)
         """
-        phi_x = nn.Sequential( #coord_mlp
+        phi_x = nn.Sequential(  # coord_mlp
             [
                 nn.Dense(hidden_dim),
                 act_fn,
@@ -128,19 +136,23 @@ class EGNN_layer(nn.Module):
     attention: bool = True
 
     @nn.compact
-    def __call__(self, edge_index, h, x, edge_attr, node_mask, edge_mask):  #EquivariantBlock
+    def __call__(
+        self, edge_index, h, x, edge_attr, node_mask, edge_mask
+    ):  # EquivariantBlock
         # get primitives
-        message_fn, agg_update_fn, pos_agg_update_fn = build_fn(self.hidden_dim, self.act_fn, self.attention)
+        message_fn, agg_update_fn, pos_agg_update_fn = build_fn(
+            self.hidden_dim, self.act_fn, self.attention
+        )
         # compute the distance between connected nodes
         dist = compute_radial(edge_index, x, norm_constant=self.norm_constant)
         # message -> aggregation -> node update, position update
-        #GCL
+        # GCL
         m_ij = message_fn(edge_index, h, dist, edge_attr, edge_mask)
         h = agg_update_fn(edge_index, h, m_ij)
         if node_mask is not None:
             h = h * node_mask
-        
-        #EquivariantUpdate
+
+        # EquivariantUpdate
         x = pos_agg_update_fn(edge_index, x, m_ij, node_mask)
 
         if node_mask is not None:
@@ -150,8 +162,8 @@ class EGNN_layer(nn.Module):
 
 class EGNN(nn.Module):
     hidden_dim: int
-    out_dim: int = None
     num_layers: int
+    out_dim: int = None
     act_fn: callable = jax.nn.silu
 
     def setup(self):
@@ -159,15 +171,26 @@ class EGNN(nn.Module):
             self.out_dim = self.hidden_dim
 
         self.initial_dense = nn.Dense(self.hidden_dim)
-        self.egnn_layers = [EGNN_layer(self.hidden_dim, self.act_fn) for _ in range(self.num_layers)]
+        self.egnn_layers = [
+            EGNN_layer(self.hidden_dim, self.act_fn) for _ in range(self.num_layers)
+        ]
         self.output_dense = nn.Dense(self.out_dim)
 
     def __call__(self, edge_index, h, x, node_mask=None, edge_mask=None):
-        distances = compute_radial(edge_index, x)  # Assuming compute_radial is defined elsewhere
+        distances = compute_radial(
+            edge_index, x
+        )  # Assuming compute_radial is defined elsewhere
         h = self.initial_dense(h)
 
         for layer in self.egnn_layers:
-            h, x = layer(edge_index, h, x, edge_attr=distances, node_mask=node_mask, edge_mask=edge_mask)
+            h, x = layer(
+                edge_index,
+                h,
+                x,
+                edge_attr=distances,
+                node_mask=node_mask,
+                edge_mask=edge_mask,
+            )
 
         h = self.output_dense(h)
         if node_mask is not None:

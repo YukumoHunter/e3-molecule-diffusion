@@ -23,7 +23,6 @@ from jax import random
 import optax
 
 
-
 def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args):
     data = next(iter(dataloader))
     x = data["positions"]
@@ -34,7 +33,7 @@ def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args)
     h = {"categorical": one_hot, "integer": charges}
     context = None
     bs, n_nodes, n_dims = x.shape
-    edge_mask = jnp.reshape(edge_mask, shape = (bs, n_nodes * n_nodes))
+    edge_mask = jnp.reshape(edge_mask, (bs, n_nodes * n_nodes))
     params = model.init(key, x, h, node_mask, edge_mask, context)
 
     state = TrainState.create(apply_fn=model.apply, params=params, tx=optim)
@@ -53,7 +52,7 @@ def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args)
             reg_term = jnp.array([0.0])
             mean_abs_z = 0.0
             loss = nll + args.ode_regularization * reg_term
-            return loss, (nll,reg_term)
+            return loss, (nll, reg_term)
 
         x = batch["positions"]
         node_mask = jnp.expand_dims(batch["atom_mask"], 2)
@@ -66,7 +65,9 @@ def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args)
         context = None
         value_grad = jax.value_and_grad(loss_fn, has_aux=True)
         t0 = time.time()
-        losses, grads = value_grad(state.params, nodes_dist, x, h, node_mask, edge_mask, context)
+        losses, grads = value_grad(
+            state.params, nodes_dist, x, h, node_mask, edge_mask, context
+        )
         time_forward_backwards = time.time() - t0
         loss, (nll, reg_term) = losses
 
@@ -75,6 +76,7 @@ def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args)
         return state, loss, nll, reg_term, time_forward_backwards
 
     return train_step, state
+
 
 def create_test_step(args, nodes_dist):
     @jax.jit
@@ -105,8 +107,9 @@ def create_test_step(args, nodes_dist):
         cum_nll = nll.item() * batch_size
         n_samples = batch_size
         return cum_nll, n_samples
-    
+
     return test_step
+
 
 def test(state, test_step, test_loader, epoch, args, partition="Test"):
     cum_nll_epoch = 0
@@ -114,7 +117,6 @@ def test(state, test_step, test_loader, epoch, args, partition="Test"):
     n_iterations = len(test_loader)
 
     for i, data in enumerate(test_loader):
-
         cum_nll_batch, n_samples_batch = test_step(state, data)
 
         cum_nll_epoch += cum_nll_batch
@@ -126,6 +128,7 @@ def test(state, test_step, test_loader, epoch, args, partition="Test"):
             )
 
     return cum_nll_epoch / n_samples
+
 
 #############################
 # ORIGINAL

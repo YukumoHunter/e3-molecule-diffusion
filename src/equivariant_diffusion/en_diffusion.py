@@ -28,9 +28,11 @@ def expm1(x):
 def softplus(x):
     return jax.nn.softplus(x)
 
+
 # 27
 def sum_except_batch(x):
     return jnp.sum(x.reshape((x.shape[0], -1)), axis=-1)
+
 
 # 27
 def clip_noise_schedule(alphas2, clip_value=0.001):
@@ -45,6 +47,7 @@ def clip_noise_schedule(alphas2, clip_value=0.001):
     alphas2 = jnp.cumprod(alphas_step, axis=0)
 
     return alphas2
+
 
 # 27
 def polynomial_schedule(timesteps: int, s=1e-4, power=3.0):
@@ -111,7 +114,6 @@ def gaussian_KL(q_mu, q_sigma, p_mu, p_sigma, node_mask):
         )
         * node_mask
     )
-
 
 
 # 27
@@ -221,6 +223,7 @@ def predefined_noise_forward(gamma, t, timesteps):
     t_int = jnp.round(t * timesteps).astype(int)
     return gamma[t_int]
 
+
 # 27
 class PredefinedNoiseSchedule(nn.Module):
     noise_schedule: str
@@ -228,17 +231,17 @@ class PredefinedNoiseSchedule(nn.Module):
     precision: float
 
     def setup(self):
-        if self.noise_schedule == 'cosine': #We are not going to use this
+        if self.noise_schedule == "cosine":  # We are not going to use this
             alphas2 = cosine_beta_schedule(self.timesteps)
-        elif 'polynomial' in self.noise_schedule:
-            splits = self.noise_schedule.split('_')
+        elif "polynomial" in self.noise_schedule:
+            splits = self.noise_schedule.split("_")
             assert len(splits) == 2
             power = float(splits[1])
             alphas2 = polynomial_schedule(self.timesteps, s=self.precision, power=power)
         else:
             raise ValueError(self.noise_schedule)
 
-        print('alphas2', alphas2)
+        print("alphas2", alphas2)
 
         sigmas2 = 1 - alphas2
 
@@ -247,13 +250,14 @@ class PredefinedNoiseSchedule(nn.Module):
 
         log_alphas2_to_sigmas2 = log_alphas2 - log_sigmas2
 
-        print('gamma', -log_alphas2_to_sigmas2)
+        print("gamma", -log_alphas2_to_sigmas2)
 
         self.gamma = -log_alphas2_to_sigmas2
 
     def __call__(self, t):
         t_int = jnp.round(t * self.timesteps).astype(int)
         return self.gamma[t_int]
+
 
 class GammaNetwork(nn.Module):
     def setup(self):
@@ -305,6 +309,7 @@ def show_schedule(params, num_steps=50):
     print("Gamma schedule:")
     print(gamma_schedule)
 
+
 # 27
 def cdf_standard_gaussian(x):
     return 0.5 * (1.0 + erf(x / jnp.sqrt(2)))
@@ -316,6 +321,7 @@ class EnVariationalDiffusion(nn.Module):
     The E(n) Diffusion Module in JAX.
     """
 
+    rng_key: jax.random.PRNGKey
     dynamics: models.EGNN_dynamics_QM9
     in_node_nf: int
     n_dims: int
@@ -327,6 +333,7 @@ class EnVariationalDiffusion(nn.Module):
     norm_values: tuple = (1.0, 1.0, 1.0)
     norm_biases: tuple = (None, 0.0, 0.0)
     include_charges: bool = True
+    training: bool = True
 
     def setup(self):
         assert self.loss_type in {"vlb", "l2"}
@@ -352,7 +359,7 @@ class EnVariationalDiffusion(nn.Module):
 
         self.T = self.timesteps
 
-        self.register_buffer("buffer", jnp.zeros(1))
+        # self.register_buffer("buffer", jnp.zeros(1))
 
         if self.noise_schedule != "learned":
             self.check_issues_norm_values()
@@ -390,12 +397,16 @@ class EnVariationalDiffusion(nn.Module):
     # 27
     def sigma(self, gamma, target_tensor):
         """Computes sigma given gamma."""
-        return self.inflate_batch_array(jnp.sqrt(jax.scipy.special.expit(gamma)), target_tensor)
+        return self.inflate_batch_array(
+            jnp.sqrt(jax.scipy.special.expit(gamma)), target_tensor
+        )
 
     # 27
     def alpha(self, gamma, target_tensor):
         """Computes alpha given gamma."""
-        return self.inflate_batch_array(jnp.sqrt(jax.scipy.special.expit(-gamma)), target_tensor)
+        return self.inflate_batch_array(
+            jnp.sqrt(jax.scipy.special.expit(-gamma)), target_tensor
+        )
 
     # 27
     def SNR(self, gamma):
@@ -416,9 +427,14 @@ class EnVariationalDiffusion(nn.Module):
         )
 
         # Casting to float in case h still has long or int type.
-        h_cat = (h['categorical'].astype(jnp.float32) - self.norm_biases[1]) / self.norm_values[1] * node_mask
-        h_int = (h['integer'].astype(jnp.float32) - self.norm_biases[2]) / self.norm_values[2]
-
+        h_cat = (
+            (h["categorical"].astype(jnp.float32) - self.norm_biases[1])
+            / self.norm_values[1]
+            * node_mask
+        )
+        h_int = (
+            h["integer"].astype(jnp.float32) - self.norm_biases[2]
+        ) / self.norm_values[2]
 
         if self.include_charges:
             h_int = h_int * node_mask
@@ -496,12 +512,16 @@ class EnVariationalDiffusion(nn.Module):
         mu_T_x, mu_T_h = mu_T[:, :, : self.n_dims], mu_T[:, :, self.n_dims :]
 
         # Compute standard deviations (only batch axis for x-part, inflated for h-part).
-        sigma_T_x = vmap(lambda g, m: self.sigma(g, m).squeeze())(gamma_T, mu_T_x)  # Remove inflate, only keep batch dimension for x-part.
+        sigma_T_x = vmap(lambda g, m: self.sigma(g, m).squeeze())(
+            gamma_T, mu_T_x
+        )  # Remove inflate, only keep batch dimension for x-part.
         sigma_T_h = vmap(self.sigma)(gamma_T, mu_T_h)
 
         # Compute KL for h-part.
         zeros, ones = jnp.zeros_like(mu_T_h), jnp.ones_like(sigma_T_h)
-        kl_distance_h = vmap(self.gaussian_KL)(mu_T_h, sigma_T_h, zeros, ones, node_mask)
+        kl_distance_h = vmap(self.gaussian_KL)(
+            mu_T_h, sigma_T_h, zeros, ones, node_mask
+        )
 
         # Compute KL for x-part.
         zeros, ones = jnp.zeros_like(mu_T_x), jnp.ones_like(sigma_T_x)
@@ -532,7 +552,9 @@ class EnVariationalDiffusion(nn.Module):
         eps_t = net_out
         if self.training and self.loss_type == "l2":
             denom = (self.n_dims + self.in_node_nf) * eps_t.shape[1]
-            error = sum_except_batch((eps - eps_t) ** 2) / denom #jnp.sum(jnp.square(eps - eps_t)) / denom
+            error = (
+                sum_except_batch((eps - eps_t) ** 2) / denom
+            )  # jnp.sum(jnp.square(eps - eps_t)) / denom
         else:
             error = sum_except_batch((eps - eps_t) ** 2)
         return error
@@ -598,11 +620,7 @@ class EnVariationalDiffusion(nn.Module):
             if self.include_charges
             else z_t[:, :, self.n_dims :]
         )
-        z_h_int = (
-            z_t[:, :, -1:]
-            if self.include_charges
-            else jnp.zeros((0,))
-        )
+        z_h_int = z_t[:, :, -1:] if self.include_charges else jnp.zeros((0,))
 
         # Take only part over x.
         eps_x = eps[:, :, : self.n_dims]
@@ -685,9 +703,8 @@ class EnVariationalDiffusion(nn.Module):
             shape=(x.shape[0],),
             minval=lowest_t,
             maxval=self.T + 1,
-            dtype=jnp.float32,
-        )
-        
+        ).astype(jnp.float32)
+
         s_int = t_int - 1
         t_is_zero = jnp.float32(t_int == 0)  # Important to compute log p(x | z0).
 
@@ -744,7 +761,7 @@ class EnVariationalDiffusion(nn.Module):
         kl_prior = self.kl_prior(xh, node_mask)
 
         # Combining the terms
-        if t0_always: #This wont happen
+        if t0_always:  # This wont happen
             loss_t = loss_t_larger_than_zero
             num_terms = self.T  # Since t=0 is not included here.
             estimator_loss_terms = num_terms * loss_t
@@ -807,6 +824,9 @@ class EnVariationalDiffusion(nn.Module):
             "error": error.squeeze(),
         }
 
+    def __call__(self, x, h, node_mask=None, edge_mask=None, context=None):
+        self.forward(x, h, node_mask, edge_mask, context)
+
     # 27
     def forward(self, x, h, node_mask=None, edge_mask=None, context=None):
         """
@@ -822,12 +842,24 @@ class EnVariationalDiffusion(nn.Module):
         if self.training:
             # Only 1 forward pass when t0_always is False.
             loss, loss_dict = self.compute_loss(
-                x, h, node_mask, edge_mask, context, t0_always=False
+                x,
+                h,
+                self.make_rng("rng_stream"),
+                node_mask,
+                edge_mask,
+                context,
+                t0_always=False,
             )
         else:
             # Less variance in the estimator, costs two forward passes.
             loss, loss_dict = self.compute_loss(
-                x, h, node_mask, edge_mask, context, t0_always=True
+                x,
+                h,
+                self.make_rng("rng_stream"),
+                node_mask,
+                edge_mask,
+                context,
+                t0_always=True,
             )
 
         neg_log_pxh = loss
@@ -880,7 +912,9 @@ class EnVariationalDiffusion(nn.Module):
         return zs
 
     # 27
-    def sample_combined_position_feature_noise(self, rng, n_samples, n_nodes, node_mask):
+    def sample_combined_position_feature_noise(
+        self, rng, n_samples, n_nodes, node_mask
+    ):
         """
         Samples mean-centered normal noise for z_x, and standard normal noise for z_h.
         """

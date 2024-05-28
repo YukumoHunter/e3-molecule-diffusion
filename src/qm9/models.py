@@ -9,8 +9,9 @@ from egnn.models import EGNN_dynamics_QM9
 from utils import AdamW_with_amsgrad_clipping_ema
 from equivariant_diffusion.en_diffusion import EnVariationalDiffusion
 
+
 # 27
-def get_model(args, dataset_info, dataloader_train):
+def get_model(key, args, dataset_info, dataloader_train):
     histogram = dataset_info["n_nodes"]
     in_node_nf = len(dataset_info["atom_decoder"]) + int(args.include_charges)
     nodes_dist = DistributionNodes(histogram)
@@ -44,6 +45,7 @@ def get_model(args, dataset_info, dataloader_train):
 
     if args.probabilistic_model == "diffusion":
         vdm = EnVariationalDiffusion(
+            rng_key=key,
             dynamics=net_dynamics,
             in_node_nf=in_node_nf,
             n_dims=3,
@@ -62,10 +64,12 @@ def get_model(args, dataset_info, dataloader_train):
 
 
 def get_optim(args):
-    optimizer = AdamW_with_amsgrad_clipping_ema(learning_rate=args.lr, 
-                                                weight_decay=1e-12, 
-                                                gradnorm_queue = 50,
-                                                ema_decay=args.ema_decay)
+    optimizer = AdamW_with_amsgrad_clipping_ema(
+        learning_rate=args.lr,
+        weight_decay=1e-12,
+        gradnorm_queue=50,
+        ema_decay=args.ema_decay,
+    )
     return optimizer
 
 
@@ -93,8 +97,7 @@ class DistributionNodes:
         # self.m = random.categorical(key=subkey, logits=prob)
 
     def sample(self, rng, n_samples=1):
-
-        idx = random.choice(rng, len(self.n_nodes), shape = (n_samples,), p = self.prob)
+        idx = random.choice(rng, len(self.n_nodes), shape=(n_samples,), p=self.prob)
         # idx = random.categorical(key=rng, logits=self.prob)
         return self.n_nodes[idx]
 
@@ -185,7 +188,7 @@ class DistributionProperty:
         vals = []
         for n_nodes in nodesxsample:
             rng, subkey = random.split(rng)
-            vals.append(jnp.expand_dims(self.sample(subkey,int(n_nodes)), 0))
+            vals.append(jnp.expand_dims(self.sample(subkey, int(n_nodes)), 0))
         vals = jnp.concatenate(vals, dim=0)
         return vals
 

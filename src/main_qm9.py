@@ -18,9 +18,9 @@ from equivariant_diffusion import utils as flow_utils
 import time
 import pickle
 from qm9.utils import prepare_context, compute_mean_mad
+
 # from train_test import train_epoch, test, analyze_and_save
 from train_test import create_train_step_and_state, create_test_step, test
-
 
 
 import jax
@@ -33,8 +33,10 @@ from jax.nn import softplus
 from jax.nn.initializers import uniform, variance_scaling, kaiming_uniform
 import flax.linen as nn
 
+import flax
 from jax import lax
 
+import os
 
 parser = argparse.ArgumentParser(description="E3Diffusion")
 parser.add_argument("--exp_name", type=str, default="debug_10")
@@ -65,8 +67,8 @@ parser.add_argument(
 parser.add_argument("--diffusion_loss_type", type=str, default="l2", help="vlb, l2")
 
 parser.add_argument("--n_epochs", type=int, default=200)
-parser.add_argument("--batch_size", type=int, default=128) #64
-parser.add_argument("--lr", type=float, default=2e-4) #1e-4
+parser.add_argument("--batch_size", type=int, default=128)  # 64
+parser.add_argument("--lr", type=float, default=2e-4)  # 1e-4
 parser.add_argument("--brute_force", type=eval, default=False, help="True | False")
 parser.add_argument("--actnorm", type=eval, default=True, help="True | False")
 parser.add_argument(
@@ -77,9 +79,9 @@ parser.add_argument("--condition_time", type=eval, default=True, help="True | Fa
 parser.add_argument("--clip_grad", type=eval, default=True, help="True | False")
 parser.add_argument("--trace", type=str, default="hutch", help="hutch | exact")
 # EGNN args -->
-parser.add_argument("--n_layers", type=int, default=6, help="number of layers") #9
+parser.add_argument("--n_layers", type=int, default=6, help="number of layers")  # 9
 parser.add_argument("--inv_sublayers", type=int, default=1, help="number of layers")
-parser.add_argument("--nf", type=int, default=128, help="number of features") #256
+parser.add_argument("--nf", type=int, default=128, help="number of features")  # 256
 parser.add_argument("--tanh", type=eval, default=True, help="use tanh in the coord_mlp")
 parser.add_argument(
     "--attention", type=eval, default=True, help="use attention in the EGNN"
@@ -131,7 +133,7 @@ parser.add_argument("--generate_epochs", type=int, default=1, help="save model")
 parser.add_argument(
     "--num_workers", type=int, default=0, help="Number of worker for the dataloader"
 )
-parser.add_argument("--test_epochs", type=int, default=10) #20
+parser.add_argument("--test_epochs", type=int, default=10)  # 20
 parser.add_argument(
     "--data_augmentation", type=eval, default=False, help="use attention in the EGNN"
 )
@@ -148,7 +150,7 @@ parser.add_argument(
     type=float,
     default=0.999,
     help="Amount of EMA decay, 0 means off. A reasonable value" " is 0.999.",
-) #0.9999
+)  # 0.9999
 parser.add_argument("--augment_noise", type=float, default=0)
 parser.add_argument(
     "--n_stability_samples",
@@ -260,19 +262,20 @@ args.context_node_nf = context_node_nf
 SEED = 42
 
 key = random.key(SEED)
-key, subkey = random.split(key)
+key, subkey, subsubkey = random.split(key, 3)
 
 # Create EGNN flow
 model, nodes_dist, prop_dist = get_model(
-    subkey, args, dataset_info, dataloaders["train"]
-) #if args.conditionining == [] then prop_dist = None
+    subsubkey, args, dataset_info, dataloaders["train"]
+)  # if args.conditionining == [] then prop_dist = None
 if prop_dist is not None:
     prop_dist.set_normalizer(property_norms)
-optim = get_optim(args, model) #not initialized yet
-# print(model)
+optim = get_optim(args)  # not initialized yet
+
 
 # gradnorm_queue = utils.Queue()
 # gradnorm_queue.add(3000)  # Add large value that will be flushed.
+
 
 # ? it is not used
 def check_mask_correct(variables, node_mask):
@@ -293,7 +296,7 @@ def main():
     # Initialize model copy for exponential moving average of params.
     if args.ema_decay > 0:
         model_ema = copy.deepcopy(model)
-        ema = flow_utils.EMA(args.ema_decay) #old * self.beta + (1 - self.beta) * new
+        ema = flow_utils.EMA(args.ema_decay)  # old * self.beta + (1 - self.beta) * new
 
         model_ema_dp = model_ema
     else:
@@ -301,17 +304,24 @@ def main():
         model_ema = model
         model_ema_dp = model_dp
 
-    training_step_jitted, state = create_train_step_and_state(key, model, optim, dataloaders["train"], nodes_dist, args)    
+    ## TODO: create edges_dict
+
+    training_step_jitted, state = create_train_step_and_state(
+        subkey, model, optim, dataloaders["train"], nodes_dist, args
+    )
     test_step = create_test_step(args, nodes_dist)
     best_nll_val = 1e8
     best_nll_test = 1e8
     times_forward_backwards = []
+
     for epoch in range(args.start_epoch, args.n_epochs):
         nll_epoch = []
         start_epoch = time.time()
         n_iterations = len(dataloaders["train"])
         for i, batch in enumerate(dataloaders["train"]):
-            state, loss, nll, reg_term, time_fb_batch = training_step_jitted(state, batch)
+            state, loss, nll, reg_term, time_fb_batch = training_step_jitted(
+                state, batch
+            )
             times_forward_backwards.append(time_fb_batch)
 
             if i % args.n_report_steps == 0:
@@ -319,7 +329,7 @@ def main():
                     f"\rEpoch: {epoch}, iter: {i}/{n_iterations}, "
                     f"Loss {loss.item():.2f}, NLL: {nll.item():.2f}, "
                     f"RegTerm: {reg_term.item():.1f}, "
-                    f"GradNorm: {state.opt_state[3].items[0]:.1f}" #TODO: Is this correct??
+                    f"GradNorm: {state.opt_state[3].items[0]:.1f}"  # TODO: Is this correct??
                 )
             nll_epoch.append(nll.item())
             # if (
@@ -361,9 +371,11 @@ def main():
             # if args.break_train_epoch:
             #     break
             # wandb.log({"Train Epoch NLL": np.mean(nll_epoch)}, commit=False)
-        
+
         print(f"Epoch took {time.time() - start_epoch:.1f} seconds.")
-        print(f"    forward + backward passes took-> mean:{np.mean([times_forward_backwards])}")
+        print(
+            f"    forward + backward passes took-> mean:{np.mean([times_forward_backwards])}"
+        )
         if epoch % args.test_epochs == 0:
             # if isinstance(model, en_diffusion.EnVariationalDiffusion):
             #     wandb.log(model.log_info(), commit=True)
@@ -379,24 +391,24 @@ def main():
             #         n_samples=args.n_stability_samples,
             #     )
             nll_val = test(
-                state, 
-                test_step, 
-                test_loader = dataloaders["valid"],
-                epoch = epoch, 
-                args = args, 
-                partition = "Validation"
-                ) 
+                state,
+                test_step,
+                test_loader=dataloaders["valid"],
+                epoch=epoch,
+                args=args,
+                partition="Validation",
+            )
             nll_test = test(
-                state, 
-                test_step, 
-                test_loader = dataloaders["test"],
-                epoch = epoch, 
-                args = args, 
-                partition = "Validation"
-                ) 
-            
+                state,
+                test_step,
+                test_loader=dataloaders["test"],
+                epoch=epoch,
+                args=args,
+                partition="Validation",
+            )
+
             def save_model(params, filepath):
-                with open(filepath, 'wb') as f:
+                with open(filepath, "wb") as f:
                     f.write(flax.serialization.to_bytes(params))
 
             if nll_val < best_nll_val:
@@ -405,29 +417,41 @@ def main():
                 if save_model:
                     args.current_epoch = epoch + 1
                     os.makedirs(f"outputs/{exp_name}", exist_ok=True)
-                    save_model(optimizer_state, f""outputs/%s/optim.npy" % args.exp_name")
+
+                    save_model(optimizer_state, f"outputs/{args.exp_name}/optim.npy")
                     save_model(model_params, f"outputs/{exp_name}/generative_model.npy")
-                    if ema_decay > 0:
-                        save_model(model_params, f"outputs/{exp_name}/generative_model_ema.npy")
+
+                    if args.ema_decay > 0:
+                        save_model(
+                            model_params, f"outputs/{exp_name}/generative_model_ema.npy"
+                        )
                     with open(f"outputs/{exp_name}/args.pickle", "wb") as f:
                         pickle.dump(args, f)
 
                 if save_model:
                     save_model(optimizer_state, f"outputs/{exp_name}/optim_{epoch}.npy")
-                    save_model(model_params, f"outputs/{exp_name}/generative_model_{epoch}.npy")
+                    save_model(
+                        model_params, f"outputs/{exp_name}/generative_model_{epoch}.npy"
+                    )
+
                     if ema_decay > 0:
-                        save_model(model_params, f"outputs/{exp_name}/generative_model_ema_{epoch}.npy")
+                        save_model(
+                            model_params,
+                            f"outputs/{exp_name}/generative_model_ema_{epoch}.npy",
+                        )
                     with open(f"outputs/{exp_name}/args_{epoch}.pickle", "wb") as f:
                         pickle.dump(args, f)
 
             print("Val loss: %.4f \t Test loss:  %.4f" % (nll_val, nll_test))
-            print("Best val loss: %.4f \t Best test loss:  %.4f" % (best_nll_val, best_nll_test))
+            print(
+                "Best val loss: %.4f \t Best test loss:  %.4f"
+                % (best_nll_val, best_nll_test)
+            )
 
             # Log to wandb
             wandb.log({"Val loss": nll_val}, commit=True)
             wandb.log({"Test loss": nll_test}, commit=True)
             wandb.log({"Best cross-validated test loss": best_nll_test}, commit=True)
-
 
             # if nll_val < best_nll_val:
             #     best_nll_val = nll_val

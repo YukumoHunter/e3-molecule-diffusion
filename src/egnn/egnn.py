@@ -74,6 +74,7 @@ def build_fn(hidden_dim, act_fn, attention):
 
         senders, receivers = edge_index
         h_i, h_j = h[senders], h[receivers]
+
         out = jnp.concatenate([h_i, h_j, dist, edge_attr], axis=1)
 
         out = phi_e(out)
@@ -163,12 +164,14 @@ class EGNN_layer(nn.Module):
 class EGNN(nn.Module):
     hidden_dim: int
     num_layers: int
-    out_dim: int = None
+    out_dim_fake: int = None
     act_fn: callable = jax.nn.silu
 
     def setup(self):
-        if self.out_dim is None:
+        if self.out_dim_fake is None:
             self.out_dim = self.hidden_dim
+        else:
+            self.out_dim = self.out_dim_fake
 
         self.initial_dense = nn.Dense(self.hidden_dim)
         self.egnn_layers = [

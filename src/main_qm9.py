@@ -304,9 +304,7 @@ def main():
         model_ema = model
         model_ema_dp = model_dp
 
-    ## TODO: create edges_dict
-
-    training_step_jitted, state = create_train_step_and_state(
+    training_step_jitted, state, edges_dict = create_train_step_and_state(
         subkey, model, optim, dataloaders["train"], nodes_dist, args
     )
     test_step = create_test_step(args, nodes_dist)
@@ -319,9 +317,11 @@ def main():
         start_epoch = time.time()
         n_iterations = len(dataloaders["train"])
         for i, batch in enumerate(dataloaders["train"]):
-            state, loss, nll, reg_term, time_fb_batch = training_step_jitted(
-                state, batch
+            print("train loop lololo nodemask: ", batch["atom_mask"].shape)
+            edges_dict_new, state, loss, nll, reg_term, time_fb_batch = (
+                training_step_jitted(edges_dict, state, batch)
             )
+            edges_dict = edges_dict_new
             times_forward_backwards.append(time_fb_batch)
 
             if i % args.n_report_steps == 0:

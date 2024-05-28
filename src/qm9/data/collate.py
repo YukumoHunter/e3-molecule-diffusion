@@ -28,9 +28,16 @@ def batch_stack(props):
         return jnp.array(props)
     elif jnp.ndim(props[0]) == 0:
         return jnp.stack(props)
-    else:        
+    else:
         max_shape = np.max([prop.shape for prop in props], axis=0)
-        padded_props = [jnp.pad(prop, [(0, max_s - s) for s, max_s in zip(prop.shape, max_shape)], mode='constant') for prop in props]
+        padded_props = [
+            jnp.pad(
+                prop,
+                [(0, max_s - s) for s, max_s in zip(prop.shape, max_shape)],
+                mode="constant",
+            )
+            for prop in props
+        ]
         return jnp.stack(padded_props, axis=0)
         # return torch.nn.utils.rnn.pad_sequence(
         #     torch.tensor(np.asarray(props)), batch_first=True, padding_value=0
@@ -97,6 +104,10 @@ class PreprocessQM9:
 
         atom_mask = batch["charges"] > 0
         batch["atom_mask"] = atom_mask
+
+        print("charges", batch["charges"].shape)
+        print("atom_mask", atom_mask.shape)
+        print("atom mask time complete :D")
 
         # Obtain edges
         batch_size, n_nodes = atom_mask.shape

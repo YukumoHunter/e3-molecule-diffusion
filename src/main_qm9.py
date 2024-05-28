@@ -7,6 +7,7 @@ import copy
 import utils
 import argparse
 import wandb
+import numpy as np
 from configs.datasets_config import get_dataset_info
 from os.path import join
 from qm9 import dataset
@@ -17,7 +18,9 @@ from equivariant_diffusion import utils as flow_utils
 import time
 import pickle
 from qm9.utils import prepare_context, compute_mean_mad
-from train_test import train_epoch, test, analyze_and_save
+# from train_test import train_epoch, test, analyze_and_save
+from train_test import create_train_step_and_state, create_test_step, test
+
 
 
 import jax
@@ -298,113 +301,177 @@ def main():
         model_ema = model
         model_ema_dp = model_dp
 
-    apply_fn=model.apply,
-
-    params=variables['params'],
-
-    tx=tx
-    create_training_state(rng,optim, )
-
+    training_step_jitted, state = create_train_step_and_state(key, model, optim, dataloaders["train"], nodes_dist, args)    
+    test_step = create_test_step(args, nodes_dist)
     best_nll_val = 1e8
     best_nll_test = 1e8
+    times_forward_backwards = []
     for epoch in range(args.start_epoch, args.n_epochs):
+        nll_epoch = []
         start_epoch = time.time()
-        train_epoch(
-            args=args,
-            loader=dataloaders["train"],
-            epoch=epoch,
-            model=model,
-            model_dp=model_dp,
-            model_ema=model_ema,
-            ema=ema,
-            dtype=dtype,
-            property_norms=property_norms, #None
-            nodes_dist=nodes_dist,
-            dataset_info=dataset_info,
-            # gradnorm_queue=gradnorm_queue,
-            optim=optim,
-            prop_dist=prop_dist,
-        )
-        print(f"Epoch took {time.time() - start_epoch:.1f} seconds.")
+        n_iterations = len(dataloaders["train"])
+        for i, batch in enumerate(dataloaders["train"]):
+            state, loss, nll, reg_term, time_fb_batch = training_step_jitted(state, batch)
+            times_forward_backwards.append(time_fb_batch)
 
-        if epoch % args.test_epochs == 0:
-            if isinstance(model, en_diffusion.EnVariationalDiffusion):
-                wandb.log(model.log_info(), commit=True)
-
-            if not args.break_train_epoch:
-                analyze_and_save(
-                    args=args,
-                    epoch=epoch,
-                    model_sample=model_ema,
-                    nodes_dist=nodes_dist,
-                    dataset_info=dataset_info,
-                    prop_dist=prop_dist,
-                    n_samples=args.n_stability_samples,
+            if i % args.n_report_steps == 0:
+                print(
+                    f"\rEpoch: {epoch}, iter: {i}/{n_iterations}, "
+                    f"Loss {loss.item():.2f}, NLL: {nll.item():.2f}, "
+                    f"RegTerm: {reg_term.item():.1f}, "
+                    f"GradNorm: {state.opt_state[3].items[0]:.1f}" #TODO: Is this correct??
                 )
+            nll_epoch.append(nll.item())
+            # if (
+            #     (epoch % args.test_epochs == 0)
+            #     and (i % args.visualize_every_batch == 0)
+            #     and not (epoch == 0 and i == 0)
+            # ):
+            #     start = time.time()
+            #     if len(args.conditioning) > 0:
+            #         save_and_sample_conditional(
+            #             args, model_ema, prop_dist, dataset_info, epoch=epoch
+            #         )
+            #     save_and_sample_chain(
+            #         model_ema, args, dataset_info, prop_dist, epoch=epoch, batch_id=str(i)
+            #     )
+            #     sample_different_sizes_and_save(
+            #         model_ema, nodes_dist, args, dataset_info, prop_dist, epoch=epoch
+            #     )
+            #     print(f"Sampling took {time.time() - start:.2f} seconds")
+
+            #     vis.visualize(
+            #         f"outputs/{args.exp_name}/epoch_{epoch}_{i}",
+            #         dataset_info=dataset_info,
+            #         wandb=wandb,
+            #     )
+            #     vis.visualize_chain(
+            #         f"outputs/{args.exp_name}/epoch_{epoch}_{i}/chain/",
+            #         dataset_info,
+            #         wandb=wandb,
+            #     )
+            #     if len(args.conditioning) > 0:
+            #         vis.visualize_chain(
+            #             "outputs/%s/epoch_%d/conditional/" % (args.exp_name, epoch),
+            #             dataset_info,
+            #             wandb=wandb,
+            #             mode="conditional",
+            #         )
+            # wandb.log({"Batch NLL": nll.item()}, commit=True)
+            # if args.break_train_epoch:
+            #     break
+            # wandb.log({"Train Epoch NLL": np.mean(nll_epoch)}, commit=False)
+        
+        print(f"Epoch took {time.time() - start_epoch:.1f} seconds.")
+        print(f"    forward + backward passes took-> mean:{np.mean([times_forward_backwards])}")
+        if epoch % args.test_epochs == 0:
+            # if isinstance(model, en_diffusion.EnVariationalDiffusion):
+            #     wandb.log(model.log_info(), commit=True)
+
+            # if not args.break_train_epoch:
+            #     analyze_and_save(
+            #         args=args,
+            #         epoch=epoch,
+            #         model_sample=model_ema,
+            #         nodes_dist=nodes_dist,
+            #         dataset_info=dataset_info,
+            #         prop_dist=prop_dist,
+            #         n_samples=args.n_stability_samples,
+            #     )
             nll_val = test(
-                args=args,
-                loader=dataloaders["valid"],
-                epoch=epoch,
-                eval_model=model_ema_dp,
-                partition="Val",
-                dtype=dtype,
-                nodes_dist=nodes_dist,
-                property_norms=property_norms,
-            )
+                state, 
+                test_step, 
+                test_loader = dataloaders["valid"],
+                epoch = epoch, 
+                args = args, 
+                partition = "Validation"
+                ) 
             nll_test = test(
-                args=args,
-                loader=dataloaders["test"],
-                epoch=epoch,
-                eval_model=model_ema_dp,
-                partition="Test",
-                dtype=dtype,
-                nodes_dist=nodes_dist,
-                property_norms=property_norms,
-            )
+                state, 
+                test_step, 
+                test_loader = dataloaders["test"],
+                epoch = epoch, 
+                args = args, 
+                partition = "Validation"
+                ) 
+            
+            def save_model(params, filepath):
+                with open(filepath, 'wb') as f:
+                    f.write(flax.serialization.to_bytes(params))
 
             if nll_val < best_nll_val:
                 best_nll_val = nll_val
                 best_nll_test = nll_test
-                if args.save_model:
+                if save_model:
                     args.current_epoch = epoch + 1
-                    utils.save_model(optim, "outputs/%s/optim.npy" % args.exp_name)
-                    utils.save_model(
-                        model, "outputs/%s/generative_model.npy" % args.exp_name
-                    )
-                    if args.ema_decay > 0:
-                        utils.save_model(
-                            model_ema,
-                            "outputs/%s/generative_model_ema.npy" % args.exp_name,
-                        )
-                    with open("outputs/%s/args.pickle" % args.exp_name, "wb") as f:
+                    os.makedirs(f"outputs/{exp_name}", exist_ok=True)
+                    save_model(optimizer_state, f""outputs/%s/optim.npy" % args.exp_name")
+                    save_model(model_params, f"outputs/{exp_name}/generative_model.npy")
+                    if ema_decay > 0:
+                        save_model(model_params, f"outputs/{exp_name}/generative_model_ema.npy")
+                    with open(f"outputs/{exp_name}/args.pickle", "wb") as f:
                         pickle.dump(args, f)
 
-                if args.save_model:
-                    utils.save_model(
-                        optim, "outputs/%s/optim_%d.npy" % (args.exp_name, epoch)
-                    )
-                    utils.save_model(
-                        model,
-                        "outputs/%s/generative_model_%d.npy" % (args.exp_name, epoch),
-                    )
-                    if args.ema_decay > 0:
-                        utils.save_model(
-                            model_ema,
-                            "outputs/%s/generative_model_ema_%d.npy"
-                            % (args.exp_name, epoch),
-                        )
-                    with open(
-                        "outputs/%s/args_%d.pickle" % (args.exp_name, epoch), "wb"
-                    ) as f:
+                if save_model:
+                    save_model(optimizer_state, f"outputs/{exp_name}/optim_{epoch}.npy")
+                    save_model(model_params, f"outputs/{exp_name}/generative_model_{epoch}.npy")
+                    if ema_decay > 0:
+                        save_model(model_params, f"outputs/{exp_name}/generative_model_ema_{epoch}.npy")
+                    with open(f"outputs/{exp_name}/args_{epoch}.pickle", "wb") as f:
                         pickle.dump(args, f)
+
             print("Val loss: %.4f \t Test loss:  %.4f" % (nll_val, nll_test))
-            print(
-                "Best val loss: %.4f \t Best test loss:  %.4f"
-                % (best_nll_val, best_nll_test)
-            )
-            wandb.log({"Val loss ": nll_val}, commit=True)
-            wandb.log({"Test loss ": nll_test}, commit=True)
-            wandb.log({"Best cross-validated test loss ": best_nll_test}, commit=True)
+            print("Best val loss: %.4f \t Best test loss:  %.4f" % (best_nll_val, best_nll_test))
+
+            # Log to wandb
+            wandb.log({"Val loss": nll_val}, commit=True)
+            wandb.log({"Test loss": nll_test}, commit=True)
+            wandb.log({"Best cross-validated test loss": best_nll_test}, commit=True)
+
+
+            # if nll_val < best_nll_val:
+            #     best_nll_val = nll_val
+            #     best_nll_test = nll_test
+            #     if args.save_model:
+            #         args.current_epoch = epoch + 1
+            #         utils.save_model(optim, "outputs/%s/optim.npy" % args.exp_name)
+            #         utils.save_model(
+            #             model, "outputs/%s/generative_model.npy" % args.exp_name
+            #         )
+            #         if args.ema_decay > 0:
+            #             utils.save_model(
+            #                 model_ema,
+            #                 "outputs/%s/generative_model_ema.npy" % args.exp_name,
+            #             )
+            #         with open("outputs/%s/args.pickle" % args.exp_name, "wb") as f:
+            #             pickle.dump(args, f)
+
+            #     if args.save_model:
+            #         utils.save_model(
+            #             optim, "outputs/%s/optim_%d.npy" % (args.exp_name, epoch)
+            #         )
+            #         utils.save_model(
+            #             model,
+            #             "outputs/%s/generative_model_%d.npy" % (args.exp_name, epoch),
+            #         )
+            #         if args.ema_decay > 0:
+            #             utils.save_model(
+            #                 model_ema,
+            #                 "outputs/%s/generative_model_ema_%d.npy"
+            #                 % (args.exp_name, epoch),
+            #             )
+            #         with open(
+            #             "outputs/%s/args_%d.pickle" % (args.exp_name, epoch), "wb"
+            #         ) as f:
+            #             pickle.dump(args, f)
+            # print("Val loss: %.4f \t Test loss:  %.4f" % (nll_val, nll_test))
+            # print(
+            #     "Best val loss: %.4f \t Best test loss:  %.4f"
+            #     % (best_nll_val, best_nll_test)
+            # )
+            # wandb.log({"Val loss ": nll_val}, commit=True)
+            # wandb.log({"Test loss ": nll_test}, commit=True)
+            # wandb.log({"Best cross-validated test loss ": best_nll_test}, commit=True)
 
 
 if __name__ == "__main__":

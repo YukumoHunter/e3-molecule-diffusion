@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 
-
+##
 def compute_mean_mad(dataloaders, properties, dataset_name):
     if dataset_name == "qm9":
         return compute_mean_mad_from_dataloader(dataloaders["train"], properties)
@@ -9,7 +9,7 @@ def compute_mean_mad(dataloaders, properties, dataset_name):
     else:
         raise Exception("Wrong dataset name")
 
-
+##
 def compute_mean_mad_from_dataloader(dataloader, properties):
     property_norms = {}
     for property_key in properties:
@@ -58,10 +58,10 @@ def preprocess_input(one_hot, charges, charge_power, charge_scale, device):
     )
     return atom_scalars
 
-
+##
 def prepare_context(conditioning, minibatch, property_norms):
-    batch_size, n_nodes, _ = minibatch["positions"].size()
-    node_mask = minibatch["atom_mask"].unsqueeze(2)
+    batch_size, n_nodes, _ = minibatch["positions"].shape
+    node_mask = jnp.expand_dims(minibatch["atom_mask"], 2)
     context_node_nf = 0
     context_list = []
     for key in conditioning:
@@ -69,29 +69,29 @@ def prepare_context(conditioning, minibatch, property_norms):
         properties = (properties - property_norms[key]["mean"]) / property_norms[key][
             "mad"
         ]
-        if len(properties.size()) == 1:
+        if properties.ndim == 1:
             # Global feature.
-            assert properties.size() == (batch_size,)
-            reshaped = properties.view(batch_size, 1, 1).repeat(1, n_nodes, 1)
+            assert properties.shape == (batch_size,)
+            reshaped = jnp.tile(properties[:,None,None], (1,n_nodes,1))
             context_list.append(reshaped)
             context_node_nf += 1
-        elif len(properties.size()) == 2 or len(properties.size()) == 3:
+        elif properties.ndim in [2,3]:
             # Node feature.
-            assert properties.size()[:2] == (batch_size, n_nodes)
+            assert properties.shape[:2] == (batch_size, n_nodes)
 
             context_key = properties
 
             # Inflate if necessary.
-            if len(properties.size()) == 2:
-                context_key = context_key.unsqueeze(2)
+            if properties.ndim == 2:
+                context_key = jnp.expand_dims(context_key, 2)
 
             context_list.append(context_key)
-            context_node_nf += context_key.size(2)
+            context_node_nf += context_key.shape[2]
         else:
             raise ValueError("Invalid tensor size, more than 3 axes.")
     # Concatenate
     context = jnp.concatenate(context_list, axis=2)
     # Mask disabled nodes!
     context = context * node_mask
-    assert context.size(2) == context_node_nf
+    assert context.shape[2] == context_node_nf
     return context

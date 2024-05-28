@@ -4,6 +4,8 @@ import os
 import jax.numpy as jnp
 import jax
 from jax import random
+import optax
+from typing import Any, NamedTuple
 
 
 # Folders
@@ -33,7 +35,7 @@ def load_model(path):
 # Gradient clipping
 class Queue:
     def __init__(self, max_len=50):
-        self.items = []
+        self.items = [3000]
         self.max_len = max_len
 
     def __len__(self):
@@ -50,27 +52,65 @@ class Queue:
     def std(self):
         return np.std(self.items)
 
+class GradientClippingState(NamedTuple):
+    gradnorm_queue: Any
 
-def gradient_clipping(flow, gradnorm_queue):
-    # Allow gradient norm to be 150% + 2 * stdev of the recent history.
-    max_grad_norm = 1.5 * gradnorm_queue.mean() + 2 * gradnorm_queue.std()
+def gradient_clipping(gradnorm_queue: Queue, max_len=50):
+    def init_fn(params):
+        return GradientClippingState(gradnorm_queue=gradnorm_queue)
 
-    # Clips gradient and returns the norm
-    grad_norm = torch.nn.utils.clip_grad_norm_(
-        flow.parameters(), max_norm=max_grad_norm, norm_type=2.0
-    )
+    def update_fn(updates, state, params=None):        
+        # Update the queue with the new grad norm
+        mean = state.gradnorm_queue.mean()
+        std = state.gradnorm_queue.std()
+        max_grad_norm = 1.5 * mean + 2 * std
+        
+        grad_norm = optax.global_norm(updates)
+        state.gradnorm_queue.add(min(float(grad_norm), float(max_grad_norm)))
 
-    if float(grad_norm) > max_grad_norm:
-        gradnorm_queue.add(float(max_grad_norm))
-    else:
-        gradnorm_queue.add(float(grad_norm))
-
-    if float(grad_norm) > max_grad_norm:
-        print(
-            f"Clipped gradient with value {grad_norm:.1f} "
-            f"while allowed {max_grad_norm:.1f}"
+        # Clip gradients
+        clipped_updates = jax.tree_util.tree_map(
+            lambda g: jnp.clip(g, -max_grad_norm, max_grad_norm), updates
         )
-    return grad_norm
+
+        return clipped_updates, state
+
+    return optax.GradientTransformation(init_fn, update_fn)
+
+# Use the custom gradient clipping in AdamW_with_amsgrad
+def AdamW_with_amsgrad_clipping_ema(
+    learning_rate: float = 0.001,
+    b1: float = 0.9,
+    b2: float = 0.999,
+    weight_decay: float = 0.0001,
+    eps: float = 1e-8,
+    eps_root: float = 0.0,
+    mu_dtype = None,
+    mask = None,
+    gradnorm_queue = None,
+    ema_decay = 0.9999
+):
+    if gradnorm_queue:
+        queue = Queue(max_len=gradnorm_queue)
+
+        return optax.chain(
+            optax.scale_by_amsgrad(
+            b1=b1, b2=b2, eps=eps, eps_root=eps_root, mu_dtype=mu_dtype),
+            optax.add_decayed_weights(weight_decay, mask),
+            optax.scale_by_learning_rate(learning_rate),
+            gradient_clipping(queue),
+            optax.ema(decay = ema_decay)
+        )
+    else:
+        return optax.chain(
+            optax.scale_by_amsgrad(
+            b1=b1, b2=b2, eps=eps, eps_root=eps_root, mu_dtype=mu_dtype),
+            optax.add_decayed_weights(weight_decay, mask),
+            optax.scale_by_learning_rate(learning_rate),
+            optax.ema(decay = ema_decay)
+        )
+
+
 
 
 # Rotation data augmntation

@@ -15,168 +15,239 @@ from qm9 import losses
 import time
 import tqdm
 import torch
+from flax.training.train_state import TrainState
 
 import jax
 import jax.numpy as jnp
+from jax import random
 import optax
 
 
-# ME
-def calculate_loss_acc(state, params, batch):
-    data_input, labels = batch
-    # Obtain the logits and predictions of the model for the input data
-    logits = state.apply_fn(params, data_input).squeeze(axis=-1)
-    pred_labels = (logits > 0).astype(jnp.float32)
-    # Calculate the loss and accuracy
-    loss = optax.sigmoid_binary_cross_entropy(logits, labels).mean()
-    acc = (pred_labels == labels).mean()
-    return loss, acc
 
+def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args):
+    data = next(iter(dataloader))
+    x = data["positions"]
+    node_mask = jnp.expand_dims(data["atom_mask"], 2)
+    edge_mask = data["edge_mask"]
+    one_hot = data["one_hot"]
+    charges = data["charges"] if args.include_charges else jnp.zeros(0)
+    h = {"categorical": one_hot, "integer": charges}
+    context = None
+    bs, n_nodes, n_dims = x.shape
+    edge_mask = jnp.reshape(edge_mask, shape = (bs, n_nodes * n_nodes))
+    params = model.init(key, x, h, node_mask, edge_mask, context)
 
-@jax.jit  # Jit the function for efficiency
-def train_step(state, batch):
-    # Gradient function
-    grad_fn = jax.value_and_grad(
-        calculate_loss_acc,  # Function to calculate the loss
-        argnums=1,  # Parameters are second argument of the function
-        has_aux=True,  # Function has additional outputs, here accuracy
-    )
-    # Determine gradients for current model, parameters and batch
-    (loss, acc), grads = grad_fn(state, state.params, batch)
-    # Perform parameter update with gradients and optimizer
-    state = state.apply_gradients(grads=grads)
-    # Return state and any other value we might want
-    return state, loss, acc
+    state = TrainState.create(apply_fn=model.apply, params=params, tx=optim)
 
+    @jax.jit
+    def train_step(state, batch):
+        def loss_fn(params, nodes_dist, x, h, node_mask, edge_mask, context):
+            bs, n_nodes, _ = x.shape
+            edge_mask = jnp.reshape(edge_mask, (bs, n_nodes * n_nodes))
+            nll = state.appy_fn(params, x, h, node_mask, edge_mask, context)
 
-def train_epoch(state, data_loader, num_epochs=100):
-    # Training loop
-    for epoch in tqdm(range(num_epochs)):
-        for batch in data_loader:
-            state, loss, acc = train_step(state, batch)
-            # We could use the loss and accuracy for logging here, e.g. in TensorBoard
-            # For simplicity, we skip this part here
-    return state
+            N = jnp.sum(node_mask.squeeze(axis=2), axis=1).astype(jnp.int64)
+            log_pN = nodes_dist.log_prob(N)
+            nll = nll - log_pN
+            nll = nll.mean(0)
+            reg_term = jnp.array([0.0])
+            mean_abs_z = 0.0
+            loss = nll + args.ode_regularization * reg_term
+            return loss, (nll,reg_term)
 
-
-# ORIGINAL
-# I removed device
-def train_epoch(
-    args,
-    loader,
-    epoch,
-    model,
-    model_dp,
-    model_ema,
-    ema,
-    dtype,
-    property_norms,
-    optim,
-    nodes_dist,
-    gradnorm_queue,
-    dataset_info,
-    prop_dist,
-):
-    # model.train()
-    nll_epoch = []
-    n_iterations = len(loader)
-    for i, data in enumerate(loader):
-        x = data["positions"]
-        node_mask = data["atom_mask"].unsqueeze(2)
-        edge_mask = data["edge_mask"]
-        one_hot = data["one_hot"]
-        charges = data["charges"] if args.include_charges else torch.zeros(0)
+        x = batch["positions"]
+        node_mask = jnp.expand_dims(batch["atom_mask"], 2)
+        edge_mask = batch["edge_mask"]
+        one_hot = batch["one_hot"]
+        charges = batch["charges"] if args.include_charges else jnp.zeros(0)
 
         x = remove_mean_with_mask(x, node_mask)
-
-        if args.augment_noise > 0:
-            # Add noise eps ~ N(0, augment_noise) around points.
-            eps = sample_center_gravity_zero_gaussian_with_mask(x.size(), x, node_mask)
-            x = x + eps * args.augment_noise
-
-        x = remove_mean_with_mask(x, node_mask)
-        if args.data_augmentation:
-            x = utils.random_rotation(x).detach()
-
-        check_mask_correct([x, one_hot, charges], node_mask)
-        assert_mean_zero_with_mask(x, node_mask)
-
         h = {"categorical": one_hot, "integer": charges}
+        context = None
+        value_grad = jax.value_and_grad(loss_fn, has_aux=True)
+        t0 = time.time()
+        losses, grads = value_grad(state.params, nodes_dist, x, h, node_mask, edge_mask, context)
+        time_forward_backwards = time.time() - t0
+        loss, (nll, reg_term) = losses
 
-        if len(args.conditioning) > 0:
-            context = qm9utils.prepare_context(args.conditioning, data, property_norms)
-            assert_correctly_masked(context, node_mask)
-        else:
-            context = None
+        state = state.apply_gradients(grads=grads)
 
-        optim.zero_grad()
+        return state, loss, nll, reg_term, time_forward_backwards
 
-        # transform batch through flow
-        nll, reg_term, mean_abs_z = losses.compute_loss_and_nll(
-            args, model_dp, nodes_dist, x, h, node_mask, edge_mask, context
-        )
-        # standard nll from forward KL
-        loss = nll + args.ode_regularization * reg_term
-        loss.backward()
+    return train_step, state
 
-        if args.clip_grad:
-            grad_norm = utils.gradient_clipping(model, gradnorm_queue)
-        else:
-            grad_norm = 0.0
+def create_test_step(args, nodes_dist):
+    @jax.jit
+    def test_step(state, batch):
+        def loss_fn(params, x, h, node_mask, edge_mask, context):
+            bs, n_nodes, n_dims = x.shape
+            edge_mask = jnp.reshape(edge_mask, (bs, n_nodes * n_nodes))
+            nll = state.apply_fn(params, x, h, node_mask, edge_mask, context)
 
-        optim.step()
+            N = jnp.sum(node_mask.squeeze(axis=2), axis=1).astype(jnp.int64)
+            log_pN = nodes_dist.log_prob(N)
+            nll = nll - log_pN
+            nll = nll.mean(0)
+            return nll
 
-        # Update EMA if enabled.
-        if args.ema_decay > 0:
-            ema.update_model_average(model_ema, model)
+        x = batch["positions"]
+        batch_size = x.shape[0]
+        node_mask = jnp.expand_dims(batch["atom_mask"], 2)
+        edge_mask = batch["edge_mask"]
+        one_hot = batch["one_hot"]
+        charges = batch["charges"] if args.include_charges else jnp.zeros(0)
 
+        x = remove_mean_with_mask(x, node_mask)
+        h = {"categorical": one_hot, "integer": charges}
+        context = None
+
+        nll = loss_fn(state.params, x, h, node_mask, edge_mask, context)
+        cum_nll = nll.item() * batch_size
+        n_samples = batch_size
+        return cum_nll, n_samples
+    
+    return test_step
+
+def test(state, test_step, test_loader, epoch, args, partition="Test"):
+    cum_nll_epoch = 0
+    n_samples = 0
+    n_iterations = len(test_loader)
+
+    for i, data in enumerate(test_loader):
+
+        cum_nll_batch, n_samples_batch = test_step(state, data)
+
+        cum_nll_epoch += cum_nll_batch
+        n_samples += n_samples_batch
         if i % args.n_report_steps == 0:
             print(
-                f"\rEpoch: {epoch}, iter: {i}/{n_iterations}, "
-                f"Loss {loss.item():.2f}, NLL: {nll.item():.2f}, "
-                f"RegTerm: {reg_term.item():.1f}, "
-                f"GradNorm: {grad_norm:.1f}"
+                f"\r {partition} NLL \t epoch: {epoch}, iter: {i}/{n_iterations}, "
+                f"NLL: {cum_nll_epoch/n_samples:.2f}"
             )
-        nll_epoch.append(nll.item())
-        if (
-            (epoch % args.test_epochs == 0)
-            and (i % args.visualize_every_batch == 0)
-            and not (epoch == 0 and i == 0)
-        ):
-            start = time.time()
-            if len(args.conditioning) > 0:
-                save_and_sample_conditional(
-                    args, model_ema, prop_dist, dataset_info, epoch=epoch
-                )
-            save_and_sample_chain(
-                model_ema, args, dataset_info, prop_dist, epoch=epoch, batch_id=str(i)
-            )
-            sample_different_sizes_and_save(
-                model_ema, nodes_dist, args, dataset_info, prop_dist, epoch=epoch
-            )
-            print(f"Sampling took {time.time() - start:.2f} seconds")
 
-            vis.visualize(
-                f"outputs/{args.exp_name}/epoch_{epoch}_{i}",
-                dataset_info=dataset_info,
-                wandb=wandb,
-            )
-            vis.visualize_chain(
-                f"outputs/{args.exp_name}/epoch_{epoch}_{i}/chain/",
-                dataset_info,
-                wandb=wandb,
-            )
-            if len(args.conditioning) > 0:
-                vis.visualize_chain(
-                    "outputs/%s/epoch_%d/conditional/" % (args.exp_name, epoch),
-                    dataset_info,
-                    wandb=wandb,
-                    mode="conditional",
-                )
-        wandb.log({"Batch NLL": nll.item()}, commit=True)
-        if args.break_train_epoch:
-            break
-    wandb.log({"Train Epoch NLL": np.mean(nll_epoch)}, commit=False)
+    return cum_nll_epoch / n_samples
+
+#############################
+# ORIGINAL
+# I removed device
+# def train_epoch(
+#     args,
+#     loader,
+#     epoch,
+#     model,
+#     model_dp,
+#     model_ema,
+#     ema,
+#     dtype,
+#     property_norms, #None
+#     optim,
+#     nodes_dist,
+#     # gradnorm_queue,
+#     dataset_info,
+#     prop_dist, #None
+#     rng
+# ):
+#     # model.train()
+#     nll_epoch = []
+#     n_iterations = len(loader)
+#     for i, data in enumerate(loader):
+#         x = data["positions"]
+#         node_mask = jnp.expand_dims(data["atom_mask"], 2)
+#         edge_mask = data["edge_mask"]
+#         one_hot = data["one_hot"]
+#         charges = data["charges"] if args.include_charges else jnp.zeros(0)
+
+#         x = remove_mean_with_mask(x, node_mask)
+
+#         if args.augment_noise > 0:
+#             rng, key_sample_gaussian = random.split(rng, 2)
+#             # Add noise eps ~ N(0, augment_noise) around points.
+#             eps = sample_center_gravity_zero_gaussian_with_mask(key_sample_gaussian, x.shape, x, node_mask)
+#             x = x + eps * args.augment_noise
+
+#         x = remove_mean_with_mask(x, node_mask)
+#         if args.data_augmentation: #defaul false
+#             x = utils.random_rotation(x)
+
+#         check_mask_correct([x, one_hot, charges], node_mask)
+#         assert_mean_zero_with_mask(x, node_mask)
+
+#         h = {"categorical": one_hot, "integer": charges}
+
+#         if len(args.conditioning) > 0: #default None
+#             context = qm9utils.prepare_context(args.conditioning, data, property_norms)
+#             assert_correctly_masked(context, node_mask)
+#         else:
+#             context = None
+
+#         optim.zero_grad()
+
+#         # transform batch through flow
+#         nll, reg_term, mean_abs_z = losses.compute_loss_and_nll(
+#             args, model_dp, nodes_dist, x, h, node_mask, edge_mask, context
+#         )
+#         # standard nll from forward KL
+#         loss = nll + args.ode_regularization * reg_term
+#         loss.backward()
+
+#         # if args.clip_grad:
+#         #     grad_norm = utils.gradient_clipping(model, gradnorm_queue)
+#         # else:
+#         #     grad_norm = 0.0
+
+#         optim.step()
+
+#         # Update EMA if enabled.
+#         # if args.ema_decay > 0:
+#         #     ema.update_model_average(model_ema, model)
+
+#         if i % args.n_report_steps == 0:
+#             print(
+#                 f"\rEpoch: {epoch}, iter: {i}/{n_iterations}, "
+#                 f"Loss {loss.item():.2f}, NLL: {nll.item():.2f}, "
+#                 f"RegTerm: {reg_term.item():.1f}, "
+#                 f"GradNorm: {grad_norm:.1f}"
+#             )
+#         nll_epoch.append(nll.item())
+#         if (
+#             (epoch % args.test_epochs == 0)
+#             and (i % args.visualize_every_batch == 0)
+#             and not (epoch == 0 and i == 0)
+#         ):
+#             start = time.time()
+#             if len(args.conditioning) > 0:
+#                 save_and_sample_conditional(
+#                     args, model_ema, prop_dist, dataset_info, epoch=epoch
+#                 )
+#             save_and_sample_chain(
+#                 model_ema, args, dataset_info, prop_dist, epoch=epoch, batch_id=str(i)
+#             )
+#             sample_different_sizes_and_save(
+#                 model_ema, nodes_dist, args, dataset_info, prop_dist, epoch=epoch
+#             )
+#             print(f"Sampling took {time.time() - start:.2f} seconds")
+
+#             vis.visualize(
+#                 f"outputs/{args.exp_name}/epoch_{epoch}_{i}",
+#                 dataset_info=dataset_info,
+#                 wandb=wandb,
+#             )
+#             vis.visualize_chain(
+#                 f"outputs/{args.exp_name}/epoch_{epoch}_{i}/chain/",
+#                 dataset_info,
+#                 wandb=wandb,
+#             )
+#             if len(args.conditioning) > 0:
+#                 vis.visualize_chain(
+#                     "outputs/%s/epoch_%d/conditional/" % (args.exp_name, epoch),
+#                     dataset_info,
+#                     wandb=wandb,
+#                     mode="conditional",
+#                 )
+#         wandb.log({"Batch NLL": nll.item()}, commit=True)
+#         if args.break_train_epoch:
+#             break
+#     wandb.log({"Train Epoch NLL": np.mean(nll_epoch)}, commit=False)
 
 
 def check_mask_correct(variables, node_mask):
@@ -186,60 +257,60 @@ def check_mask_correct(variables, node_mask):
 
 
 # I removed device
-def test(
-    args, loader, epoch, eval_model, dtype, property_norms, nodes_dist, partition="Test"
-):
-    eval_model.eval()
-    with torch.no_grad():
-        nll_epoch = 0
-        n_samples = 0
+# def test(
+#     args, loader, epoch, eval_model, dtype, property_norms, nodes_dist, partition="Test"
+# ):
+#     eval_model.eval()
+#     with torch.no_grad():
+#         nll_epoch = 0
+#         n_samples = 0
 
-        n_iterations = len(loader)
+#         n_iterations = len(loader)
 
-        for i, data in enumerate(loader):
-            x = data["positions"]
-            batch_size = x.size(0)
-            node_mask = data["atom_mask"].unsqueeze(2)
-            edge_mask = data["edge_mask"]
-            one_hot = data["one_hot"]
-            charges = data["charges"] if args.include_charges else torch.zeros(0)
+#         for i, data in enumerate(loader):
+#             x = data["positions"]
+#             batch_size = x.size(0)
+#             node_mask = data["atom_mask"].unsqueeze(2)
+#             edge_mask = data["edge_mask"]
+#             one_hot = data["one_hot"]
+#             charges = data["charges"] if args.include_charges else torch.zeros(0)
 
-            if args.augment_noise > 0:
-                # Add noise eps ~ N(0, augment_noise) around points.
-                eps = sample_center_gravity_zero_gaussian_with_mask(
-                    x.size(), x, node_mask
-                )
-                x = x + eps * args.augment_noise
+#             if args.augment_noise > 0:
+#                 # Add noise eps ~ N(0, augment_noise) around points.
+#                 eps = sample_center_gravity_zero_gaussian_with_mask(
+#                     x.size(), x, node_mask
+#                 )
+#                 x = x + eps * args.augment_noise
 
-            x = remove_mean_with_mask(x, node_mask)
-            check_mask_correct([x, one_hot, charges], node_mask)
-            assert_mean_zero_with_mask(x, node_mask)
+#             x = remove_mean_with_mask(x, node_mask)
+#             check_mask_correct([x, one_hot, charges], node_mask)
+#             assert_mean_zero_with_mask(x, node_mask)
 
-            h = {"categorical": one_hot, "integer": charges}
+#             h = {"categorical": one_hot, "integer": charges}
 
-            if len(args.conditioning) > 0:
-                context = qm9utils.prepare_context(
-                    args.conditioning, data, property_norms
-                )
-                assert_correctly_masked(context, node_mask)
-            else:
-                context = None
+#             if len(args.conditioning) > 0:
+#                 context = qm9utils.prepare_context(
+#                     args.conditioning, data, property_norms
+#                 )
+#                 assert_correctly_masked(context, node_mask)
+#             else:
+#                 context = None
 
-            # transform batch through flow
-            nll, _, _ = losses.compute_loss_and_nll(
-                args, eval_model, nodes_dist, x, h, node_mask, edge_mask, context
-            )
-            # standard nll from forward KL
+#             # transform batch through flow
+#             nll, _, _ = losses.compute_loss_and_nll(
+#                 args, eval_model, nodes_dist, x, h, node_mask, edge_mask, context
+#             )
+#             # standard nll from forward KL
 
-            nll_epoch += nll.item() * batch_size
-            n_samples += batch_size
-            if i % args.n_report_steps == 0:
-                print(
-                    f"\r {partition} NLL \t epoch: {epoch}, iter: {i}/{n_iterations}, "
-                    f"NLL: {nll_epoch/n_samples:.2f}"
-                )
+#             nll_epoch += nll.item() * batch_size
+#             n_samples += batch_size
+#             if i % args.n_report_steps == 0:
+#                 print(
+#                     f"\r {partition} NLL \t epoch: {epoch}, iter: {i}/{n_iterations}, "
+#                     f"NLL: {nll_epoch/n_samples:.2f}"
+#                 )
 
-    return nll_epoch / n_samples
+#     return nll_epoch / n_samples
 
 
 # Removed device

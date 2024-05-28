@@ -30,9 +30,9 @@ def remove_mean(x):
     x = x - mean
     return x
 
-
+# 27
 def remove_mean_with_mask(x, node_mask):
-    masked_max_abs_value = (x * (1 - node_mask)).abs().sum().item()
+    masked_max_abs_value = jnp.abs(x * (1 - node_mask)).sum().item()
     assert masked_max_abs_value < 1e-5, f"Error {masked_max_abs_value} too high"
     N = jnp.sum(node_mask, axis=1, keepdims=True)
 
@@ -107,10 +107,10 @@ def center_gravity_zero_gaussian_log_likelihood_with_mask(x, node_mask):
 
     return log_px
 
-
-def sample_center_gravity_zero_gaussian_with_mask(key, size, node_mask):
+# 27
+def sample_center_gravity_zero_gaussian_with_mask(rng, size, node_mask):
     assert len(size) == 3
-    x = random.normal(key, size)
+    x = random.normal(rng, size)
 
     x_masked = x * node_mask
 
@@ -137,8 +137,8 @@ def standard_gaussian_log_likelihood_with_mask(x, node_mask):
     log_px = sum_except_batch(log_px_elementwise * node_mask)
     return log_px
 
-
-def sample_gaussian_with_mask(key, size, node_mask):
-    x = random.normal(key, size)
+# 27
+def sample_gaussian_with_mask(rng, size, node_mask):
+    x = random.normal(rng, size)
     x_masked = x * node_mask
     return x_masked

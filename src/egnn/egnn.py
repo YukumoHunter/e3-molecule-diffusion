@@ -1,160 +1,153 @@
 import jax
 import jax.numpy as jnp
-import flax.linen as nn
+from flax import linen as nn
+import math
+from typing import Any
 
+class GCL(nn.Module):
+    input_nf: int
+    output_nf: int
+    hidden_nf: int
+    normalization_factor: float
+    aggregation_method: str
+    edges_in_d: int = 0
+    nodes_att_dim: int = 0
+    act_fn: Any = nn.silu
+    attention: bool = True
 
-def segment_mean(data, segment_ids, num_segments):
-    """
-    Computes the mean within segments of an array.
-    """
-    # Sum the data within each segment
-    segment_sums = jax.ops.segment_sum(data, segment_ids, num_segments)
-    # Compute the size of each segment
-    segment_sizes = jax.ops.segment_sum(jnp.ones_like(data), segment_ids, num_segments)
-    segment_means = segment_sums / segment_sizes
-    return segment_means
+    def setup(self):
+        self.edge_mlp = nn.Sequential([
+            nn.Dense(self.hidden_nf),
+            self.act_fn,
+            nn.Dense(self.hidden_nf),
+            self.act_fn
+        ])
 
+        self.node_mlp = nn.Sequential([
+            nn.Dense(self.hidden_nf + self.input_nf + self.nodes_att_dim),
+            self.act_fn,
+            nn.Dense(self.output_nf)
+        ])
 
-def compute_radial(edge_index, x, norm_constant=1):
-    """
-    Compute x_i - x_j and ||x_i - x_j||^2.
-    """
-    senders, receivers = edge_index
-    x_i, x_j = x[senders], x[receivers]
-    coord_diff = x_i - x_j
-    radial = jnp.sum((coord_diff) ** 2, axis=1, keepdims=True)
-    norm = jnp.sqrt(radial + 1e-8)
-    coord_diff = coord_diff / (norm + norm_constant)
-    return radial, coord_diff
+        if self.attention:
+            self.att_mlp = nn.Sequential([
+                nn.Dense(1),
+                nn.sigmoid
+            ])
 
+    def edge_model(self, source, target, edge_attr, edge_mask):
+        if edge_attr is None:
+            out = jnp.concatenate([source, target], axis=1)
+        else:
+            out = jnp.concatenate([source, target, edge_attr], axis=1)
+        mij = self.edge_mlp(out)
 
-def custom_xavier_uniform_init(gain=0.001):
-    """
-    Low variance initialization used in positional MLPs
-    """
-
-    def init(key, shape, dtype=jnp.float32):
-        std = gain * jnp.sqrt(2.0 / shape[0])
-        return jax.random.uniform(key, shape, dtype, -std, std)
-
-    return init
-
-
-class AttMLP(nn.Module):
-    @nn.compact
-    def __call__(self, x):
-        out = nn.Sequential(
-            nn.Dense(1),
-            nn.sigmoid(),
-        )(x)
-        return out
-
-
-def build_fn(hidden_dim, act_fn, attention):
-    """
-    EGNN primitives as functions
-        1. message function (eq. 3)
-        2. message aggregation + node update (eq. 5,6)
-        3. message aggregation + positional update (eq. 4)
-    """
-
-    # 27
-    def message_fn(edge_index, h, dist, edge_attr, edge_mask):  # edge_model
-        """
-        Message: m_ij = phi_e(h_i^l, h_j^l, ||x_i^l - x_j^l||^2, a_ij)
-        """
-        phi_e = nn.Sequential(
-            [
-                nn.Dense(hidden_dim),
-                act_fn,
-                nn.Dense(hidden_dim),
-                act_fn,
-            ]  # is like edge_mlp
-        )
-
-        senders, receivers = edge_index
-        h_i, h_j = h[senders], h[receivers]
-
-        out = jnp.concatenate([h_i, h_j, dist, edge_attr], axis=1)
-
-        out = phi_e(out)
-
-        if attention:
-            att_val = nn.Sequential([nn.Dense(1), nn.sigmoid()])(out)
-            out = out * att_val
+        if self.attention:
+            att_val = self.att_mlp(mij)
+            out = mij * att_val
+        else:
+            out = mij
 
         if edge_mask is not None:
             out = out * edge_mask
+        return out, mij
 
-        return out
+    def node_model(self, x, edge_index, edge_attr, node_attr):
+        row, col = edge_index
+        agg = unsorted_segment_sum(edge_attr, row, num_segments=x.shape[0],
+                                   normalization_factor=self.normalization_factor,
+                                   aggregation_method=self.aggregation_method)
+        if node_attr is not None:
+            agg = jnp.concatenate([x, agg, node_attr], axis=1)
+        else:
+            agg = jnp.concatenate([x, agg], axis=1)
+        out = x + self.node_mlp(agg)
+        return out, agg
 
-    def agg_update_fn(edge_index, h_i, m_ij):
-        """
-        Aggregation: m_i = sum_{j!=i} m_ij
-
-        Node update: h_i^{l+1} = phi_h(h_i^l, m_i)
-        """
-        phi_h = nn.Sequential(
-            [nn.Dense(hidden_dim), act_fn, nn.Dense(hidden_dim)]
-        )  # node_mlp
-
-        senders, _ = edge_index
-        m_i = jax.ops.segment_sum(m_ij, senders, num_segments=h_i.shape[0])
-        out = jnp.concatenate([h_i, m_i], axis=1)
-
-        return h_i + phi_h(out)
-
-    def pos_agg_update_fn(edge_index, x, m_ij, node_mask):  # EquivariantUpdate
-        """
-        Positional update: x_i^{l+1} = x_i^l + mean_{j!=i} (x_i^l - x_j^l) phi_x(m_ij)
-        """
-        phi_x = nn.Sequential(  # coord_mlp
-            [
-                nn.Dense(hidden_dim),
-                act_fn,
-                nn.Dense(1, kernel_init=custom_xavier_uniform_init(gain=0.001)),
-            ]
-        )
-
-        senders, receivers = edge_index
-        x_i, x_j = x[senders], x[receivers]
-        x_ij = (x_i - x_j) * phi_x(m_ij)
-
-        coord = x + segment_mean(x_ij, senders, num_segments=x.shape[0])
-
-        if node_mask is not None:
-            coord = coord * node_mask
-
-        return coord
-
-    return message_fn, agg_update_fn, pos_agg_update_fn
-
-
-class EGNN_layer(nn.Module):
-    hidden_dim: int
-    act_fn: callable
-    norm_constant = 1
-    attention: bool = True
-
-    @nn.compact
-    def __call__(
-        self, edge_index, h, x, edge_attr, node_mask, edge_mask
-    ):  # EquivariantBlock
-        # get primitives
-        message_fn, agg_update_fn, pos_agg_update_fn = build_fn(
-            self.hidden_dim, self.act_fn, self.attention
-        )
-        # compute the distance between connected nodes
-        dist = compute_radial(edge_index, x, norm_constant=self.norm_constant)
-        # message -> aggregation -> node update, position update
-        # GCL
-        m_ij = message_fn(edge_index, h, dist, edge_attr, edge_mask)
-        h = agg_update_fn(edge_index, h, m_ij)
+    def __call__(self, h, edge_index, edge_attr=None, node_attr=None, node_mask=None, edge_mask=None):
+        row, col = edge_index
+        edge_feat, mij = self.edge_model(h[row], h[col], edge_attr, edge_mask)
+        h, agg = self.node_model(h, edge_index, edge_feat, node_attr)
         if node_mask is not None:
             h = h * node_mask
+        return h, mij
 
-        # EquivariantUpdate
-        x = pos_agg_update_fn(edge_index, x, m_ij, node_mask)
+
+class EquivariantUpdate(nn.Module):
+    hidden_nf: int
+    normalization_factor: float
+    aggregation_method: str
+    edges_in_d: int = 1
+    act_fn: Any = nn.silu
+    tanh: bool = False
+    coords_range: float = 10.0
+
+    def setup(self):
+        self.coord_mlp = nn.Sequential([
+            nn.Dense(self.hidden_nf),
+            self.act_fn,
+            nn.Dense(self.hidden_nf),
+            self.act_fn,
+            nn.Dense(1, use_bias=False, kernel_init=nn.initializers.xavier_uniform(gain=0.001))
+        ])
+
+    def coord_model(self, h, coord, edge_index, coord_diff, edge_attr, edge_mask):
+        row, col = edge_index
+        input_tensor = jnp.concatenate([h[row], h[col], edge_attr], axis=1)
+        if self.tanh:
+            trans = coord_diff * jnp.tanh(self.coord_mlp(input_tensor)) * self.coords_range
+        else:
+            trans = coord_diff * self.coord_mlp(input_tensor)
+        if edge_mask is not None:
+            trans = trans * edge_mask
+        agg = unsorted_segment_sum(trans, row, num_segments=coord.shape[0],
+                                   normalization_factor=self.normalization_factor,
+                                   aggregation_method=self.aggregation_method)
+        coord = coord + agg
+        return coord
+
+    def __call__(self, h, coord, edge_index, coord_diff, edge_attr=None, node_mask=None, edge_mask=None):
+        coord = self.coord_model(h, coord, edge_index, coord_diff, edge_attr, edge_mask)
+        if node_mask is not None:
+            coord = coord * node_mask
+        return coord
+
+
+class EquivariantBlock(nn.Module):
+    hidden_nf: int
+    edge_feat_nf: int = 2
+    act_fn: Any = nn.silu
+    n_layers: int = 2
+    attention: bool = True
+    norm_diff: bool = True
+    tanh: bool = False
+    coords_range: float = 15
+    norm_constant: float = 1
+    sin_embedding: bool = False
+    normalization_factor: float = 100
+    aggregation_method: str = 'sum'
+
+    def setup(self):
+        self.gcls = [GCL(
+            self.hidden_nf, self.hidden_nf, self.hidden_nf, edges_in_d=self.edge_feat_nf,
+            act_fn=self.act_fn, attention=self.attention,
+            normalization_factor=self.normalization_factor,
+            aggregation_method=self.aggregation_method) for _ in range(self.n_layers)]
+        
+        self.gcl_equiv = EquivariantUpdate(
+            self.hidden_nf, edges_in_d=self.edge_feat_nf, act_fn=nn.silu, tanh=self.tanh,
+            coords_range=self.coords_range,
+            normalization_factor=self.normalization_factor,
+            aggregation_method=self.aggregation_method)
+
+    def __call__(self, h, x, edge_index, node_mask=None, edge_mask=None, edge_attr=None):
+        distances, coord_diff = coord2diff(x, edge_index, self.norm_constant)
+        if self.sin_embedding:
+            distances = SinusoidsEmbeddingNew()(distances)
+        edge_attr = jnp.concatenate([distances, edge_attr], axis=1)
+        for gcl in self.gcls:
+            h, _ = gcl(h, edge_index, edge_attr=edge_attr, node_mask=node_mask, edge_mask=edge_mask)
+        x = self.gcl_equiv(h, x, edge_index, coord_diff, edge_attr, node_mask, edge_mask)
 
         if node_mask is not None:
             h = h * node_mask
@@ -162,40 +155,94 @@ class EGNN_layer(nn.Module):
 
 
 class EGNN(nn.Module):
-    hidden_dim: int
-    num_layers: int
-    out_dim_fake: int = None
-    act_fn: callable = jax.nn.silu
+    in_node_nf: int
+    in_edge_nf: int
+    hidden_nf: int
+    act_fn: Any = nn.silu
+    n_layers: int = 3
+    attention: bool = False
+    norm_diff: bool = True
+    out_node_nf: int = None
+    tanh: bool = False
+    coords_range: float = 15
+    norm_constant: float = 1
+    inv_sublayers: int = 2
+    sin_embedding: bool = False
+    normalization_factor: float = 100
+    aggregation_method: str = 'sum'
 
     def setup(self):
-        if self.out_dim_fake is None:
-            self.out_dim = self.hidden_dim
+        out_node_nf = self.out_node_nf or self.in_node_nf
+
+        self.coords_range_layer = float(self.coords_range / self.n_layers)
+
+        if self.sin_embedding:
+            self.sin_embedding = SinusoidsEmbeddingNew()
+            edge_feat_nf = self.sin_embedding.dim * 2
         else:
-            self.out_dim = self.out_dim_fake
+            self.sin_embedding = None
+            edge_feat_nf = 2
 
-        self.initial_dense = nn.Dense(self.hidden_dim)
-        self.egnn_layers = [
-            EGNN_layer(self.hidden_dim, self.act_fn) for _ in range(self.num_layers)
-        ]
-        self.output_dense = nn.Dense(self.out_dim)
+        self.embedding = nn.Dense(self.hidden_nf)
+        self.embedding_out = nn.Dense(out_node_nf)
+        
+        self.e_blocks = [EquivariantBlock(
+            self.hidden_nf, edge_feat_nf=edge_feat_nf,
+            act_fn=self.act_fn, n_layers=self.inv_sublayers,
+            attention=self.attention, norm_diff=self.norm_diff, tanh=self.tanh,
+            coords_range=self.coords_range, norm_constant=self.norm_constant,
+            sin_embedding=self.sin_embedding,
+            normalization_factor=self.normalization_factor,
+            aggregation_method=self.aggregation_method) for _ in range(self.n_layers)]
 
-    def __call__(self, edge_index, h, x, node_mask=None, edge_mask=None):
-        distances = compute_radial(
-            edge_index, x
-        )  # Assuming compute_radial is defined elsewhere
-        h = self.initial_dense(h)
+    def __call__(self, h, x, edge_index, node_mask=None, edge_mask=None):
+        distances, _ = coord2diff(x, edge_index)
+        if self.sin_embedding is not None:
+            distances = self.sin_embedding(distances)
+        h = self.embedding(h)
+        for e_block in self.e_blocks:
+            h, x = e_block(h, x, edge_index, node_mask=node_mask, edge_mask=edge_mask, edge_attr=distances)
 
-        for layer in self.egnn_layers:
-            h, x = layer(
-                edge_index,
-                h,
-                x,
-                edge_attr=distances,
-                node_mask=node_mask,
-                edge_mask=edge_mask,
-            )
-
-        h = self.output_dense(h)
+        h = self.embedding_out(h)
         if node_mask is not None:
             h = h * node_mask
         return h, x
+
+class SinusoidsEmbeddingNew(nn.Module):
+    max_res: float = 15.0
+    min_res: float = 15.0 / 2000.0
+    div_factor: int = 4
+
+    def setup(self):
+        self.n_frequencies = int(math.log(self.max_res / self.min_res, self.div_factor)) + 1
+        self.frequencies = 2 * jnp.pi * self.div_factor ** jnp.arange(self.n_frequencies) / self.max_res
+        self.dim = len(self.frequencies) * 2
+
+    def __call__(self, x):
+        x = jnp.sqrt(x + 1e-8)
+        emb = x[:, None] * self.frequencies
+        emb = jnp.concatenate((jnp.sin(emb), jnp.cos(emb)), axis=-1)
+        return emb
+
+
+def coord2diff(x, edge_index, norm_constant=1):
+    row, col = edge_index
+    coord_diff = x[row] - x[col]
+    radial = jnp.sum((coord_diff) ** 2, axis=1, keepdims=True)
+    norm = jnp.sqrt(radial + 1e-8)
+    coord_diff = coord_diff / (norm + norm_constant)
+    return radial, coord_diff
+
+
+def unsorted_segment_sum(data, segment_ids, num_segments, normalization_factor, aggregation_method: str):
+    result_shape = (num_segments, data.shape[1])
+    result = jnp.zeros(result_shape, dtype=data.dtype)
+    segment_ids = jnp.expand_dims(segment_ids, -1).repeat(data.shape[1], axis=-1)
+    result = jax.ops.segment_sum(data, segment_ids, num_segments)
+    if aggregation_method == 'sum':
+        result = result / normalization_factor
+    elif aggregation_method == 'mean':
+        norm = jax.ops.segment_sum(jnp.ones_like(data), segment_ids, num_segments)
+        norm = jnp.where(norm == 0, 1, norm)
+        result = result / norm
+    return result

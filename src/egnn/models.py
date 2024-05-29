@@ -6,8 +6,6 @@ import flax.linen as nn
 from egnn.egnn import EGNN
 from equivariant_diffusion.utils import remove_mean, remove_mean_with_mask
 
-from dataclasses import field
-
 
 class EGNN_dynamics_QM9(nn.Module):
     in_node_nf: int
@@ -28,23 +26,22 @@ class EGNN_dynamics_QM9(nn.Module):
 
     # 27
     def setup(self):
+        self.variable("state", "edges_dict", lambda: {})
+
         if self.mode == "egnn_dynamics":
             self.egnn = EGNN(
-                hidden_dim=self.hidden_nf,
-                num_layers=self.n_layers,
+                in_node_nf=self.in_node_nf + self.context_node_nf,
+                in_edge_nf=1,
+                hidden_nf=self.hidden_nf,
                 act_fn=self.act_fn,
-                # in_node_nf=self.in_node_nf + self.context_node_nf,
-                # in_edge_nf=1,
-                # hidden_nf=self.hidden_nf,
-                # act_fn=self.act_fn,
-                # n_layers=self.n_layers,
-                # attention=self.attention,
-                # tanh=self.tanh,
-                # norm_constant=self.norm_constant,
-                # inv_sublayers=self.inv_sublayers,
-                # sin_embedding=self.sin_embedding,
-                # normalization_factor=self.normalization_factor,
-                # aggregation_method=self.aggregation_method,
+                n_layers=self.n_layers,
+                attention=self.attention,
+                tanh=self.tanh,
+                norm_constant=self.norm_constant,
+                inv_sublayers=self.inv_sublayers,
+                sin_embedding=self.sin_embedding,
+                normalization_factor=self.normalization_factor,
+                aggregation_method=self.aggregation_method,
             )
         elif self.mode == "gnn_dynamics":
             raise NotImplementedError
@@ -61,34 +58,33 @@ class EGNN_dynamics_QM9(nn.Module):
             #     aggregation_method=self.aggregation_method,
             # )
 
-    def forward(self, t, xh, edges_dict, node_mask, edge_mask, context=None):
+    def forward(self, t, xh, node_mask, edge_mask, context=None):
         raise NotImplementedError
 
-    def wrap_forward(self, edges_dict, node_mask, edge_mask, context):
+    def wrap_forward(self, node_mask, edge_mask, context):
         def fwd(time, state):
-            return self._forward(time, state, edges_dict, node_mask, edge_mask, context)
+            return self._forward(time, state, node_mask, edge_mask, context)
 
         return fwd
 
     def unwrap_forward(self):
         return self._forward
 
-    def __call__(self, edges_dict, node_mask, edge_mask, context=None):
+    def __call__(self, node_mask, edge_mask, context=None):
         print(
-            "EGNN dynamics be like:",
-            type(edges_dict),
+            "EGNN dynamics:",
             type(node_mask),
             type(edge_mask),
             type(context),
         )
-        return self.wrap_forward(edges_dict, node_mask, edge_mask, context)
+        return self.wrap_forward(node_mask, edge_mask, context)
 
-    def _forward(self, t, xh, edges_dict, node_mask, edge_mask, context):
+    def _forward(self, t, xh, node_mask, edge_mask, context):
         bs, n_nodes, dims = xh.shape
         h_dims = dims - self.n_dims
-        edges_dict_new, edges = self.get_adj_matrix(edges_dict, n_nodes, bs)
+        edges = self.get_adj_matrix(n_nodes, bs)
 
-        print("forward some dynamics YO:", type(bs), type(n_nodes))
+        print("forward dynamics:", type(bs), type(n_nodes))
 
         node_mask = node_mask.reshape(bs * n_nodes, 1)
         edge_mask = edge_mask.reshape(bs * n_nodes * n_nodes, 1)
@@ -162,9 +158,11 @@ class EGNN_dynamics_QM9(nn.Module):
             return vel
         else:
             h_final = h_final.reshape(bs, n_nodes, -1)
-            return edges_dict_new, jnp.concatenate([vel, h_final], axis=2)
+            return jnp.concatenate([vel, h_final], axis=2)
 
-    def get_adj_matrix(self, edges_dict, n_nodes, batch_size):
+    def get_adj_matrix(self, n_nodes, batch_size):
+        edges_dict = self.variables["state"]["edges_dict"]
+
         if n_nodes in edges_dict:
             edges_dic_b = edges_dict[n_nodes]
             if batch_size in edges_dic_b:
@@ -182,7 +180,7 @@ class EGNN_dynamics_QM9(nn.Module):
                     jnp.array(cols, dtype=jnp.int32),
                 ]
                 edges_dic_b[batch_size] = edges
-                return edges_dict, edges
+                return edges
         else:
             edges_dict[n_nodes] = {}
-            return self.get_adj_matrix(edges_dict, n_nodes, batch_size)
+            return self.get_adj_matrix(n_nodes, batch_size)

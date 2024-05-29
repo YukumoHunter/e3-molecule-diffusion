@@ -380,12 +380,10 @@ class EnVariationalDiffusion(nn.Module):
                 f"1 / norm_value = {1. / max_norm_value}"
             )
 
-    def phi(self, x, t, edges_dict, node_mask, edge_mask, context):
-        edges_dict_new, net_out = self.dynamics._forward(
-            t, x, edges_dict, node_mask, edge_mask, context
-        )
+    def phi(self, x, t, node_mask, edge_mask, context):
+        net_out = self.dynamics._forward(t, x, node_mask, edge_mask, context)
 
-        return edges_dict_new, net_out
+        return net_out
 
     # 27
     def inflate_batch_array(self, array, target):
@@ -577,17 +575,13 @@ class EnVariationalDiffusion(nn.Module):
 
         return degrees_of_freedom_x * (-log_sigma_x - 0.5 * jnp.log(2 * jnp.pi))
 
-    def sample_p_xh_given_z0(
-        self, z0, edges_dict, node_mask, edge_mask, context, fix_noise=False
-    ):
+    def sample_p_xh_given_z0(self, z0, node_mask, edge_mask, context, fix_noise=False):
         """Samples x ~ p(x|z0)."""
         zeros = jnp.zeros((z0.shape[0], 1))
         gamma_0 = self.gamma(zeros)
         # Computes sqrt(sigma_0^2 / alpha_0^2)
         sigma_x = jnp.expand_dims(self.SNR(-0.5 * gamma_0), axis=1)
-        edges_dict_new, net_out = self.phi(
-            z0, zeros, edges_dict, node_mask, edge_mask, context
-        )
+        net_out = self.phi(z0, zeros, node_mask, edge_mask, context)
 
         # Compute mu for p(zs | zt).
         mu_x = self.compute_x_pred(net_out, z0, gamma_0)
@@ -609,7 +603,7 @@ class EnVariationalDiffusion(nn.Module):
         h_cat = jax.nn.one_hot(jnp.argmax(h_cat, axis=2), self.num_classes) * node_mask
         h_int = jnp.round(h_int).astype(jnp.int32) * node_mask
         h = {"integer": h_int, "categorical": h_cat}
-        return edges_dict_new, x, h
+        return x, h
 
     def sample_normal(self, mu, sigma, node_mask, fix_noise=False):
         """Samples from a Normal distribution."""
@@ -692,9 +686,7 @@ class EnVariationalDiffusion(nn.Module):
         return log_p_xh_given_z
 
     # 27
-    def compute_loss(
-        self, x, h, rng, edges_dict, node_mask, edge_mask, context, t0_always
-    ):
+    def compute_loss(self, x, h, rng, node_mask, edge_mask, context, t0_always):
         """Computes an estimator for the variational lower bound, or the simple loss (MSE)."""
 
         # This part is about whether to include loss term 0 always.
@@ -745,9 +737,7 @@ class EnVariationalDiffusion(nn.Module):
         # diffusion_utils.assert_mean_zero_with_mask(z_t[:, :, :self.n_dims], node_mask)
 
         # Neural net prediction.
-        edges_dict_new, net_out = self.phi(
-            z_t, t, edges_dict, node_mask, edge_mask, context
-        )
+        net_out = self.phi(z_t, t, node_mask, edge_mask, context)
 
         # Compute the error.
         error = self.compute_error(net_out, gamma_t, eps)
@@ -830,7 +820,6 @@ class EnVariationalDiffusion(nn.Module):
         assert len(loss.shape) == 1, f"{loss.shape} has more than only batch dim."
 
         return (
-            edges_dict_new,
             loss,
             {
                 "t": t_int.squeeze(),
@@ -839,11 +828,11 @@ class EnVariationalDiffusion(nn.Module):
             },
         )
 
-    def __call__(self, x, h, edges_dict, node_mask=None, edge_mask=None, context=None):
-        return self.forward(x, h, edges_dict, node_mask, edge_mask, context)
+    def __call__(self, x, h, node_mask=None, edge_mask=None, context=None):
+        return self.forward(x, h, node_mask, edge_mask, context)
 
     # 27
-    def forward(self, x, h, edges_dict, node_mask=None, edge_mask=None, context=None):
+    def forward(self, x, h, node_mask=None, edge_mask=None, context=None):
         """
         Computes the loss (type l2 or NLL) if training. And if eval then always computes NLL.
         """
@@ -856,11 +845,10 @@ class EnVariationalDiffusion(nn.Module):
 
         if self.training:
             # Only 1 forward pass when t0_always is False.
-            edges_dict_new, loss, loss_dict = self.compute_loss(
+            loss, loss_dict = self.compute_loss(
                 x,
                 h,
                 self.make_rng("rng_stream"),
-                edges_dict,
                 node_mask,
                 edge_mask,
                 context,
@@ -868,11 +856,10 @@ class EnVariationalDiffusion(nn.Module):
             )
         else:
             # Less variance in the estimator, costs two forward passes.
-            edges_dict_new, loss, loss_dict = self.compute_loss(
+            loss, loss_dict = self.compute_loss(
                 x,
                 h,
                 self.make_rng("rng_stream"),
-                edges_dict,
                 node_mask,
                 edge_mask,
                 context,
@@ -885,10 +872,10 @@ class EnVariationalDiffusion(nn.Module):
         assert neg_log_pxh.shape == delta_log_px.shape
         neg_log_pxh = neg_log_pxh - delta_log_px
 
-        return edges_dict_new, neg_log_pxh
+        return neg_log_pxh
 
     def sample_p_zs_given_zt(
-        self, s, t, zt, edges_dict, node_mask, edge_mask, context, fix_noise=False
+        self, s, t, zt, node_mask, edge_mask, context, fix_noise=False
     ):
         """Samples from zs ~ p(zs | zt). Only used during sampling."""
         gamma_s = self.gamma(s)
@@ -902,7 +889,7 @@ class EnVariationalDiffusion(nn.Module):
         sigma_t = self.sigma(gamma_t, target_tensor=zt)
 
         # Neural net prediction.
-        edges_dict_new, eps_t = self.phi(zt, t, node_mask, edge_mask, context)
+        eps_t = self.phi(zt, t, node_mask, edge_mask, context)
 
         # Compute mu for p(zs | zt).
         # Assuming utils.assert_mean_zero_with_mask is a utility function,
@@ -926,7 +913,7 @@ class EnVariationalDiffusion(nn.Module):
             ],
             axis=2,
         )
-        return edges_dict_new, zs
+        return zs
 
     # 27
     def sample_combined_position_feature_noise(

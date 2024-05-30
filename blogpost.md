@@ -343,7 +343,9 @@ Puting them together: EQUIVARIANT DIFFUSION MODEL
 
 ## Results
 
-### 1. Replication of the original E(3) Equivariant Diffusion Model.
+### 1. Replication of the original E(3) Equivariant Diffusion Model
+
+We run the code from the [original repository](https://github.com/ehoogeboom/e3_diffusion_for_molecules.git).
 
 The replication yielded the following results:
 
@@ -359,6 +361,17 @@ Also, we were able to visualize the evolution of the molecules we generated thro
 
 
 ![Generated molecule from the original model](img/gen_molecule.gif) 
+
+### 2. Re-implementation of the code in JAX
+In order to achieve this, we re-wrote most of the original repository in our own one, which can be found in [this repository](https://github.com/YukumoHunter/e3-molecule-diffusion.git). Our implementation doesn't contain all the files from the original repository, but the ones that are needed to run the training and validation steps.
+
+Unfortunately, due to different problems, we haven't been able to run our implementation and get results. The code is able to train already tho, but we suspect it still needs some fixing as the nLL we get per epoch doesn't change as expected. 
+
+However, we would like to finish what we started and get the promising results that we were expecting to get.
+
+### 3. Experiments with the number of steps we jit
+
+The goal of this experiment was to find the optimum of speed through a balance among run and compilation time, as JIT let us the possiblity of of jit a certain number of steps. However, the bigger the number of number of steps, the larger time compilation requires. 
 
 <!-- 
 ## Results
@@ -380,9 +393,9 @@ Our re-implementation in JAX/FLAX aims to further enhance the model’s efficien
 ## Contributions
 
 - **Harold**: Reproduction of the original code. Debugging JAX's code.
-- **Marina**: Organisation and coordination of the project. Redaction of the blogpost's introduction to theoretical approach, results and conclusion. Correction of the blogposr. Support with coding our JAX approach. Plot of results. 
+- **Marina**: Organisation and coordination of the project. Redaction of the blogpost's introduction to theoretical approach, results and conclusion. Correction of the blogpost. README. Support with coding our JAX approach. Plot of results. 
 - **Ricardo**: JAX Code. Redaction of the blogpost's introduction to JAX.
-- **Robin**: Redaction of Implementation to JAX. 
+- **Robin**: Blogspost setup. Redaction of Implementation to JAX. Blogspot review. README. 
 
 ## References
 #### [1]  Cao, N. D. and Kipf, T. (2022). Molgan: An implicit generative model for small molecular graphs.

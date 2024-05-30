@@ -212,7 +212,7 @@ def predefined_noise_schedule(noise_schedule, timesteps, precision):
 
     log_alphas2_to_sigmas2 = log_alphas2 - log_sigmas2
 
-    print("gamma", -log_alphas2_to_sigmas2)
+    # print("gamma", -log_alphas2_to_sigmas2)
 
     gamma = -log_alphas2_to_sigmas2
 
@@ -241,7 +241,7 @@ class PredefinedNoiseSchedule(nn.Module):
         else:
             raise ValueError(self.noise_schedule)
 
-        print("alphas2", alphas2)
+        # print("alphas2", alphas2)
 
         sigmas2 = 1 - alphas2
 
@@ -250,7 +250,7 @@ class PredefinedNoiseSchedule(nn.Module):
 
         log_alphas2_to_sigmas2 = log_alphas2 - log_sigmas2
 
-        print("gamma", -log_alphas2_to_sigmas2)
+        # print("gamma", -log_alphas2_to_sigmas2)
 
         self.gamma = -log_alphas2_to_sigmas2
 
@@ -306,7 +306,7 @@ class GammaNetwork(nn.Module):
 def show_schedule(params, num_steps=50):
     t = jnp.linspace(0, 1, num_steps).reshape(-1, 1)
     gamma_schedule = GammaNetwork()(params, t)
-    print("Gamma schedule:")
+    # print("Gamma schedule:")
     print(gamma_schedule)
 
 
@@ -415,7 +415,7 @@ class EnVariationalDiffusion(nn.Module):
 
     # 27
     def subspace_dimensionality(self, node_mask):
-        print(f"subspace_dimensionality node_mask: {node_mask.shape}")
+        # print(f"subspace_dimensionality node_mask: {node_mask.shape}")
         """Compute the dimensionality on translation-invariant linear subspace where distributions on x are defined."""
         number_of_nodes = jnp.sum(node_mask.squeeze(axis=2), axis=1)
         return (number_of_nodes - 1) * self.n_dims
@@ -523,9 +523,7 @@ class EnVariationalDiffusion(nn.Module):
         # kl_distance_h = vmap(gaussian_KL)(
         #     mu_T_h, sigma_T_h, zeros, ones, node_mask
         # )
-        kl_distance_h = gaussian_KL(
-            mu_T_h, sigma_T_h, zeros, ones, node_mask
-        )
+        kl_distance_h = gaussian_KL(mu_T_h, sigma_T_h, zeros, ones, node_mask)
 
         # Compute KL for x-part.
         zeros, ones = jnp.zeros_like(mu_T_x), jnp.ones_like(sigma_T_x)
@@ -831,11 +829,11 @@ class EnVariationalDiffusion(nn.Module):
             },
         )
 
-    def __call__(self, x, h, node_mask=None, edge_mask=None, context=None, train = True):
-        return self.forward(x, h, node_mask, edge_mask, context, train = True)
+    def __call__(self, x, h, node_mask=None, edge_mask=None, context=None, train=True):
+        return self.forward(x, h, node_mask, edge_mask, context, train=True)
 
     # 27
-    def forward(self, x, h, node_mask=None, edge_mask=None, context=None, train = True):
+    def forward(self, x, h, node_mask=None, edge_mask=None, context=None, train=True):
         """
         Computes the loss (type l2 or NLL) if training. And if eval then always computes NLL.
         """

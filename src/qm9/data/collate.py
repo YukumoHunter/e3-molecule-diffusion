@@ -105,9 +105,9 @@ class PreprocessQM9:
         atom_mask = batch["charges"] > 0
         batch["atom_mask"] = atom_mask
 
-        print("charges", batch["charges"].shape)
-        print("atom_mask", atom_mask.shape)
-        print("atom mask time complete :D")
+        # print("charges", batch["charges"].shape)
+        # print("atom_mask", atom_mask.shape)
+        # print("atom mask time complete :D")
 
         # Obtain edges
         batch_size, n_nodes = atom_mask.shape

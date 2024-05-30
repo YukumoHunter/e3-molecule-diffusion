@@ -105,11 +105,9 @@ class DistributionNodes:
         assert batch_n_nodes.ndim == 1
 
         idcs = [self.keys[i.item()] for i in batch_n_nodes]
-        idcs = jnp.array(idcs).to(batch_n_nodes)
+        idcs = jnp.array(idcs)
 
         log_p = jnp.log(self.prob + 1e-30)
-
-        log_p = log_p.to(batch_n_nodes)
 
         log_probs = log_p[idcs]
 

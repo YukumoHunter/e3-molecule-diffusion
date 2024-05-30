@@ -23,14 +23,14 @@ import jax
 import jax.numpy as jnp
 from jax import random
 import optax
-
+from flax.training.train_state import TrainState
 
 # def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args):
 #     data = next(iter(dataloader))
 #     x = data["positions"]
 #     node_mask = jnp.expand_dims(data["atom_mask"], 2)
 
-#     print("node mask be like: ", data["atom_mask"].shape)
+#     print("node mask: ", data["atom_mask"].shape)
 
 #     edge_mask = data["edge_mask"]
 #     one_hot = data["one_hot"]
@@ -83,12 +83,13 @@ import optax
 
 #     return train_step, state
 
+
 def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args):
     data = next(iter(dataloader))
     x = data["positions"]
     node_mask = jnp.expand_dims(data["atom_mask"], 2)
 
-    print("node mask be like: ", data["atom_mask"].shape)
+    # print("node mask: ", data["atom_mask"].shape)
 
     edge_mask = data["edge_mask"]
     one_hot = data["one_hot"]
@@ -99,31 +100,42 @@ def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args)
     edge_mask = jnp.reshape(edge_mask, (bs, n_nodes * n_nodes))
     variables = model.init(key, x, h, node_mask, edge_mask, context, True)
     params = variables["params"]
-    mutable_variables = variables["state"]
-    
-    class TrainState(train_state.TrainState):
-        mutable_variables: Any
-    
-    state = TrainState.create(apply_fn=model.apply, params=params, tx=optim, mutable_variables = mutable_variables)
+    mutable_variables = variables["mutable_variables"]
+    opt_state = optim.init(params)
 
-    @jax.jit
-    def train_step(state, batch):
-        def loss_fn(params, nodes_dist, x, h, node_mask, edge_mask, context):
+    state = TrainState.create(
+        apply_fn=model.apply,
+        params=params,
+        tx=optim,
+        # mutable_variables=mutable_variables,
+    )
+
+    # @jax.jit
+    def train_step(rng_key, state, opt_state, batch):
+        def loss_fn(params, rng_key, nodes_dist, x, h, node_mask, edge_mask, context):
             bs, n_nodes, _ = x.shape
             edge_mask = jnp.reshape(edge_mask, (bs, n_nodes * n_nodes))
-            nll, updates = state.apply_fn(
-                {"params": params, "mutable_variables": state.mutable_variables}, 
-                x, h, node_mask, edge_mask, context, True,
-                mutable = ["mutable_variables"])
+            nll, updated_state = state.apply_fn(
+                {"params": params},
+                x,
+                h,
+                node_mask,
+                edge_mask,
+                context,
+                True,
+                rngs={"params": rng_key},
+                mutable=["mutable_variables"],
+            )
 
-            N = jnp.sum(node_mask.squeeze(axis=2), axis=1).astype(jnp.int64)
+            N = jnp.sum(node_mask.squeeze(axis=2), axis=1).astype(jnp.int32)
             log_pN = nodes_dist.log_prob(N)
             nll = nll - log_pN
             nll = nll.mean(0)
             reg_term = jnp.array([0.0])
-            mean_abs_z = 0.0
+            # mean_abs_z = 0.0
             loss = nll + args.ode_regularization * reg_term
-            return loss, (nll, reg_term, updates)
+            loss = loss.item()
+            return loss, (nll, reg_term, updated_state)
 
         x = batch["positions"]
 
@@ -135,20 +147,22 @@ def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args)
         x = remove_mean_with_mask(x, node_mask)
         h = {"categorical": one_hot, "integer": charges}
         context = None
-        value_grad = jax.value_and_grad(loss_fn, has_aux=True)
+        value_grad = jax.value_and_grad(loss_fn, has_aux=True, allow_int=True)
         t0 = time.time()
-        losses, grads = value_grad(
-            state.params, nodes_dist, x, h, node_mask, edge_mask, context
+        (loss, (nll, reg_term, new_params)), grads = value_grad(
+            state.params, key, nodes_dist, x, h, node_mask, edge_mask, context
         )
+        # updates, opt_state = state.tx.update(grads, opt_state, state.mutable_variables)
+        # new_params = optax.apply_updates(new_params, updates)
+
         time_forward_backwards = time.time() - t0
-        loss, (nll, reg_term) = losses
 
         state = state.apply_gradients(grads=grads)
-        state.replace(mutable_variables = updates['mutable_variables'])
+        # state.replace(mutable_variables=grads["mutable_variables"], params=new_params)
 
-        return state, loss, nll, reg_term, time_forward_backwards
+        return state, loss, nll, reg_term, time_forward_backwards, opt_state
 
-    return train_step, state
+    return train_step, state, opt_state
 
 
 def create_test_step(args, nodes_dist):
@@ -159,7 +173,7 @@ def create_test_step(args, nodes_dist):
             edge_mask = jnp.reshape(edge_mask, (bs, n_nodes * n_nodes))
             nll = state.apply_fn(params, x, h, node_mask, edge_mask, context)
 
-            N = jnp.sum(node_mask.squeeze(axis=2), axis=1).astype(jnp.int64)
+            N = jnp.sum(node_mask.squeeze(axis=2), axis=1).astype(jnp.int32)
             log_pN = nodes_dist.log_prob(N)
             nll = nll - log_pN
             nll = nll.mean(0)

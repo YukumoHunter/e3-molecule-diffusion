@@ -285,6 +285,9 @@ def check_mask_correct(variables, node_mask):
 
 
 def main():
+    key = random.key(SEED)
+    key, subkey = random.split(key)
+
     if args.resume is not None:
         flow_state_dict = jnp.load(join(args.resume, "flow.npy"))
         optim_state_dict = jnp.load(join(args.resume, "optim.npy"))
@@ -304,7 +307,7 @@ def main():
         model_ema = model
         model_ema_dp = model_dp
 
-    training_step_jitted, state = create_train_step_and_state(
+    training_step_jitted, state, opt_state = create_train_step_and_state(
         subkey, model, optim, dataloaders["train"], nodes_dist, args
     )
     test_step = create_test_step(args, nodes_dist)
@@ -313,23 +316,33 @@ def main():
     times_forward_backwards = []
 
     for epoch in range(args.start_epoch, args.n_epochs):
+        key, subkey = random.split(key)
+
         nll_epoch = []
         start_epoch = time.time()
         n_iterations = len(dataloaders["train"])
         for i, batch in enumerate(dataloaders["train"]):
-            state, loss, nll, reg_term, time_fb_batch = training_step_jitted(
-                state, batch
+            state, loss, nll, reg_term, time_fb_batch, opt_state = training_step_jitted(
+                subkey, state, opt_state, batch
             )
             times_forward_backwards.append(time_fb_batch)
 
-            if i % args.n_report_steps == 0:
-                print(
-                    f"\rEpoch: {epoch}, iter: {i}/{n_iterations}, "
-                    f"Loss {loss.item():.2f}, NLL: {nll.item():.2f}, "
-                    f"RegTerm: {reg_term.item():.1f}, "
-                    f"GradNorm: {state.opt_state[3].items[0]:.1f}"  # TODO: Is this correct??
-                )
-            nll_epoch.append(nll.item())
+            print(
+                f"\rEpoch: {epoch}, iter: {i}/{n_iterations}, "
+                f"Loss {loss:.2f}, NLL: {nll:.2f}, "
+                f"RegTerm: {reg_term.item():.1f}, "
+                # f"GradNorm: {state.opt_state[3].items[0]:.1f}"  # TODO: Is this correct??
+            )
+
+            # if i % args.n_report_steps == 0:
+            #     print(
+            #         f"\rEpoch: {epoch}, iter: {i}/{n_iterations}, "
+            #         f"Loss {loss:.2f}, NLL: {nll:.2f}, "
+            #         f"RegTerm: {reg_term:.1f}, "
+            #         # f"GradNorm: {state.opt_state[3].items[0]:.1f}"  # TODO: Is this correct??
+            #     )
+
+            # nll_epoch.append(nll.item())
             # if (
             #     (epoch % args.test_epochs == 0)
             #     and (i % args.visualize_every_batch == 0)

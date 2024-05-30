@@ -213,7 +213,7 @@ def predefined_noise_schedule(noise_schedule, timesteps, precision):
 
     log_alphas2_to_sigmas2 = log_alphas2 - log_sigmas2
 
-    print("gamma", -log_alphas2_to_sigmas2)
+    # print("gamma", -log_alphas2_to_sigmas2)
 
     gamma = -log_alphas2_to_sigmas2
 
@@ -270,7 +270,7 @@ def init_gamma_network_params(
 def show_schedule(params, num_steps=50):
     t = jnp.linspace(0, 1, num_steps).reshape(-1, 1)
     gamma_schedule = gamma_network(params, t)
-    print("Gamma schedule:")
+    # print("Gamma schedule:")
     print(gamma_schedule)
 
 

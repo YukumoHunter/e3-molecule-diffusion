@@ -15,6 +15,7 @@ from qm9 import losses
 import time
 import tqdm
 import torch
+import flax
 from flax.training import train_state
 
 from typing import Any
@@ -23,7 +24,6 @@ import jax
 import jax.numpy as jnp
 from jax import random
 import optax
-from flax.training.train_state import TrainState
 
 # def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args):
 #     data = next(iter(dataloader))
@@ -103,11 +103,14 @@ def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args)
     mutable_variables = variables["mutable_variables"]
     opt_state = optim.init(params)
 
+    class TrainState(train_state.TrainState):
+        mutable_variables: flax.core.FrozenDict[str, Any]
+
     state = TrainState.create(
         apply_fn=model.apply,
         params=params,
         tx=optim,
-        # mutable_variables=mutable_variables,
+        mutable_variables=mutable_variables,
     )
 
     # @jax.jit
@@ -116,7 +119,7 @@ def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args)
             bs, n_nodes, _ = x.shape
             edge_mask = jnp.reshape(edge_mask, (bs, n_nodes * n_nodes))
             nll, updated_state = state.apply_fn(
-                {"params": params},
+                {"params": params, "mutable_variables": state.mutable_variables},
                 x,
                 h,
                 node_mask,
@@ -128,9 +131,14 @@ def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args)
             )
 
             N = jnp.sum(node_mask.squeeze(axis=2), axis=1).astype(jnp.int32)
+
             log_pN = nodes_dist.log_prob(N)
+
             nll = nll - log_pN
             nll = nll.mean(0)
+
+            # print("log_pN: ", log_pN)
+
             reg_term = jnp.array([0.0])
             # mean_abs_z = 0.0
             loss = nll + args.ode_regularization * reg_term
@@ -148,7 +156,9 @@ def create_train_step_and_state(key, model, optim, dataloader, nodes_dist, args)
         h = {"categorical": one_hot, "integer": charges}
         context = None
         value_grad = jax.value_and_grad(loss_fn, has_aux=True, allow_int=True)
+
         t0 = time.time()
+
         (loss, (nll, reg_term, new_params)), grads = value_grad(
             state.params, key, nodes_dist, x, h, node_mask, edge_mask, context
         )

@@ -327,20 +327,15 @@ def main():
             )
             times_forward_backwards.append(time_fb_batch)
 
-            print(
-                f"\rEpoch: {epoch}, iter: {i}/{n_iterations}, "
-                f"Loss {loss:.2f}, NLL: {nll:.2f}, "
-                f"RegTerm: {reg_term.item():.1f}, "
-                # f"GradNorm: {state.opt_state[3].items[0]:.1f}"  # TODO: Is this correct??
-            )
+            # print(opt_state)
 
-            # if i % args.n_report_steps == 0:
-            #     print(
-            #         f"\rEpoch: {epoch}, iter: {i}/{n_iterations}, "
-            #         f"Loss {loss:.2f}, NLL: {nll:.2f}, "
-            #         f"RegTerm: {reg_term:.1f}, "
-            #         # f"GradNorm: {state.opt_state[3].items[0]:.1f}"  # TODO: Is this correct??
-            #     )
+            if i % args.n_report_steps == 0:
+                print(
+                    f"\rEpoch: {epoch}, iter: {i}/{n_iterations}, "
+                    f"Loss {loss:.2f}, NLL: {nll:.2f}, "
+                    f"RegTerm: {reg_term.item():.1f}, "
+                    # f"GradNorm: {state.opt_state[3].items[0]:.1f}"  # TODO: Is this correct??
+                )
 
             # nll_epoch.append(nll.item())
             # if (

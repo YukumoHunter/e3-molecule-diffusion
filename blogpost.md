@@ -170,21 +170,8 @@ Besides rewriting the code in JAX, we also ran the original PyTorch code alongsi
 
 Finally, we wanted to test how do jitted functions affect the performance, and in order to evaluate it we measured the run and compilation time when we apply jit to a different number of timesteps during molecule generation.
 
-<!-- 
-## Key Experiments
 
-Our Experiments focused on two primary tasks to thorougly assess the capabilities of JAX:
-
-1. **24-Hour Continuous Execution:** We replicated the results by tunning both the PyTorch and JAX codes continuously for 24 hours. This long-duration test was crucial for validating the stability and consistency of both implementations. We recorded the following metrics:
-    - **Training Time:** The total time to complete 1000 epochs
-    - **Model Accuracy:** Evaluation on the original model accuracy on a validation dataset
-    - **Resource Utilization:**  Monitoring GPU usage and memory consumption
-2. **Comparison over 1000 epochs:** To provide a more specific comparison, we ran both implementations over 1000 epochs. This way we observed:
-    - **Epoch-wise Performance:**  How each library performed per epoch, focusing on both speed and accuracy
-    - **Convergence Rate:**  The rate at which each implementation approached optimal performance. -->
-
-
-## Implementation 
+## Implementation
 
 Our code is available in our repository and it is currently running. 
 
@@ -322,17 +309,19 @@ Puting them together: EQUIVARIANT DIFFUSION MODEL
 
 ### 1. Replication of the original E(3) Equivariant Diffusion Model
 
-We run the code from the [original repository](https://github.com/ehoogeboom/e3_diffusion_for_molecules.git).
+We compare results on the QM9 dataset with code from the [original repository](https://github.com/ehoogeboom/e3_diffusion_for_molecules.git).
 
 The replication yielded the following results:
 
-| Metric | PyTorch (24-hour Run) |  PyTorch (1000 Epochs) | 
-| --- | --- | --- | 
-| Training Time | 24 hours | 24 hours | 
-| Final Model Accuracy | 89.5% | 90.0% | 
-| CPU/GPU Utilization | 85% | 75% | 
-| Memory Consumption | 16 GB | 14 GB | 
-| Convergence Rate | 0.005% per epoch | 0.006% per epoch | 
+| Metric         | PyTorch (24-hour Run) |
+| -------------- | --------------------- |
+| Training steps | 595641                |
+| Validity       | 89.4%                 |
+| Atm stable     | 97.73%                |
+| Mol stable     | 74.1%                 |
+| NLL            | -97.29                |
+
+While it was trained for a shorter time than reported in the paper, the results are agreeable, demonstrating a good reproducability.
 
 Also, we were able to visualize the evolution of the molecules we generated through the generation process, as we can visualize in the following gif, which each frame represents the state of a certain molecule during each step of the denoising process:
 
@@ -342,40 +331,31 @@ Also, we were able to visualize the evolution of the molecules we generated thro
 ### 2. Re-implementation of the code in JAX
 In order to achieve this, we re-wrote most of the original repository in our own one, which can be found in [this repository](https://github.com/YukumoHunter/e3-molecule-diffusion.git). Our implementation doesn't contain all the files from the original repository, but the ones that are needed to run the training and validation steps.
 
-Unfortunately, due to different problems, we haven't been able to run our implementation and get results. The code is able to train already tho, but we suspect it still needs some fixing as the nLL we get per epoch doesn't change as expected. 
+Unfortunately, due to time constraints, we haven't been able to run our implementation and get results. The code is able to train already, but there are still some unsolved bugs in the NLL calculation.
 
-However, we would like to finish what we started and get the promising results that we were expecting to get.
+In order to verify the correctness of our implementation, we would run the original PyTorch code and our JAX implementation side by side, and compare the obtained models after 1000 epochs with the same hyperparameters as used in the original training procedure. While results are not identical due to differences between PyTorch and JAX, we expect them to be similar.
 
-### 3. Experiments with the number of steps we jit
 
-The goal of this experiment was to find the optimum speed through a balance among run and compilation time, as jit let us the possiblity of of jit a certain number of steps. However, the bigger the number of number of steps, the larger time compilation requires. 
+### 3. Experiments with the number of jit steps
 
-<<<<<<< HEAD
-Unfortunately, the problems we had for running codes also affected this section and, even if we had everything ready to be runed, we couldn't get the results. 
-=======
-Unfortunately, the problems we had for running codes also affected this section and, even if we had everything ready to be runed, we couldn't get the results.
->>>>>>> 55bb64039c730142957ad51ff9839814c00823b6
+The goal of this experiment was to find the best model speed by balancing run and compilation time, as the JIT paradigm gives us the possiblity of jit a certain number of training steps. However, the bigger the number of number of steps, the larger time compilation requires, for a potentially bigger speed boost. Therefore it is important to find the best balance between these two factors.
 
-<!-- 
-## Results
+Unfortunately, the time constraints also affected this section and made us unable to run the experiments we wanted. Future work could investigate this further and provide a more detailed analysis of the impact of jit steps on model performance. Some interesting questions to answer would be:
 
-We are still in the process of running experiments to compare the performance of our JAX/FLAX implementation against the original PyTorch-based model. We plan to provide detailed evaluations in an accompanying notebook, which will include:
-
-- **Comparative FID Scores**: Assessing the quality of generated molecular structures.
-- **Training TIme Analysis**: Evaluating the efficiency gains achieved through the new implementation.
-- **Scalability Tests**: Demonstrating the model’s performance on larger datasets and more complex molecules (?) -->
-
+- What is the trade-off between model speed and compilation time when using jit steps?
+- Comparison of forward and backward pass times for different jit steps.
+- How does the number of jit steps affect the model's loss curve?
 
 
 ## Conclusion
 
 In conclusion, the E(3) Equivariant Diffusion Model represents a significant advancement in the field of molecular generation, providing a robust framework for generating 3D molecules with high fidelity.
 
-Our re-implementation in JAX/FLAX aims to further enhance the model’s efficiency and scalability, making it more accessible and practical for broader use in molecular sciences.
+Our re-implementation in JAX/Flax aims to further enhance the model’s efficiency and scalability, making it more accessible and practical for broader use in molecular sciences.
 
 ## Contributions
 
-- **Harold**: Reproduction of the original code. Debugging JAX's code.
+- **Harold**: Reproduction of the original code. Debugging JAX code.
 - **Marina**: Organisation and coordination of the project. Redaction of the blogpost's introduction to theoretical approach, results and conclusion. Correction of the blogpost. README. Support with coding our JAX approach. Plot of results. 
 - **Ricardo**: JAX Code and JIT time steps experiment. Redaction of the blogpost's Implementation to JAX.
 - **Robin**: Blogspost setup. Redaction of the blogpost's Introduction and Implementation to JAX. Blogspot review. README. 

@@ -6,11 +6,11 @@ The main objectives of our project are:
 1. Do a thorough review of the current literature on geometric deep learning
 for molecule generation.
 
-This review can be found in our [blogpost](e3-molecule-diffusion\blogpost.md). There, we summarize the key elements of Diffusion Models, Graphs and Equivariance, and how can they help molecules generation. Also, we make an introduction to JAX,  a machine learning framework that has excelent results in terms of speed.
+This review can be found in our [blogpost](e3-molecule-diffusion\blogpost.md). There, we summarize the key elements of Diffusion Models, Graphs and Equivariance, and how can they help molecules generation. Also, we make an introduction to JAX, a Python framework with first class support for high-performance, scalable computation.
 
 2. Reproduce the results of Equivariant Diffusion Hoogeboom et al. (2022)
 
-In order to do this, we runned the code from the [original repository](https://github.com/ehoogeboom) following the steps they indicated in their README.
+In order to do this, we ran the code from the [original repository](https://github.com/ehoogeboom) following the steps they indicated in their README.
 
 3. Implement the Equivariant Diffusion Hoogeboom et al. (2022) algorithm
 in JAX.
@@ -27,10 +27,7 @@ In order to run the training, the steps are the same as in the original reposito
 
 4. Experiments
 
-Even though we haven't finish our implementation in Jax yet (progess can be checked in [src](e3-molecule-diffusion\src) ), we expect a significant improvement in **training time** by using JAX.
-
-A first draft of our blogpost can be fount at [blogpost.md](e3-molecule-diffusion\blogpost.md). 
-
+Even though we haven't finish our implementation in Jax yet (progess can be checked in [src](e3-molecule-diffusion\src)), we expect a significant improvement in **training time** by using JAX.
 
 ## Structure
 ```
@@ -60,7 +57,7 @@ repo
 ## Prerequisites
 
 Ensure you have the following software installed:
- - Python 3.8 or higher
+ - Python 3.12.3 (lower versions might also work)
  - Git
 
 ## Setting Up the Environment
@@ -86,7 +83,7 @@ pip install -r requirements.txt
 # Usage
 To run the main model on the QM9 dataset:
 ```
-python3 src/main_qm9.py
+python src/main_qm9.py
 ```
 
 Our blogpost can be fount at [blogpost.md](e3-molecule-diffusion\blogpost.md). 

@@ -21,7 +21,7 @@ The discovery of novel molecules is a crucial step in the development of new pro
 
 In light of this situation, modern Deep Learning techniques provides an alternative and more efficient approach to achieve this through generative models. There are two characteristics of Deep Learning that makes it particularly promising when applied to molecules: First, they can cope with “unstructured” data representations such as text sequences, speech signals, images and graphs. Second, Deep Learning can perform feature extraction from the input data, that is, produce data-driven features from the input data without the need for manual intervention [(Atz et al., 2021)$ ^{[4]}$](#4--kenneth-atz-and-francesca-grisoni-and-gisbert-schneider-2021-geometric-deep-learning-on-molecular-representations).
 
-## Key points
+## Background
 ### Introduction to Graphs
 Concerning the use of Deep Learning techniques for molecules generation, according with [(Maziarz et al., 2022)$ ^{[5]}$](#5--maziarz-k-jackson-flux-h-cameron-p-sirockin-f-schneider-n-stiefl-n-segler-m-and-brockschmidt-m-2022-learning-to-extend-molecular-scaffolds-with-structural-motifs), early approaches relied on the textual SMILES (Simplified molecular input line entry system) representation and on the reuse of architectures from Natural Language processing: treating molecules elements like atoms, bonds, etc. as the words of an NLP model.
 
@@ -83,11 +83,11 @@ Where $S_g, T_g$ are linear representations related to the group element $g$ ([S
 $$\mathbf{R} f(\mathbf{x}) + \mathbf{t}=f(\mathbf{Rx + t})$$
 
 
-### EDM: E(3) Equivariance Diffusion Model for molecules generation
+## EDM: E(3) Equivariance Diffusion Model for molecules generation
 
 > The Equivariance Diffusion Model has the following four key points: 
 > 1.  It uses a generative diffusion process for molecules generation: modelates $q(\mathbf{z}_t |\mathbf{x,h})$.
-> 2. The distribution from which noise, coordinates $\hat{x}$ and features $\hat{h}$ are sampled must be equivariant: use of **center of gravity**.
+> 2. The distribution from which noise, coordinates $\hat{x}$ and features $\hat{h}$ are sampled must be invariant: use of **center of gravity**.
 > 3. The Neural Network $\phi$ that predicts coordinates $x$ and features $h$ for the distribution must be equivariant: use of **EGNN**.
 > 4. It is easier to optimize the Neural Network $\phi$ if it predicts the Gaussian noise $\hat{\epsilon}$ that is used for predicting $\hat{x}$ and $\hat{h}$. 
 
@@ -111,7 +111,7 @@ $$
 [\mathbf{\hat{x}}, \mathbf{\hat{h}}] = \mathbf{z}_t/ \alpha_t - \hat{\mathbf{\epsilon}}\cdot \sigma_t / \alpha_t 
 $$
 
-### Introduction to JAX
+## Introduction to JAX
 
 JAX is an open-source library for numerical computing that combines automatic differentiation with the capability to run code on GPUs and TPUs. Created by Google Research, JAX serves as a high-performance alternative to PyTorch and NumPy, enhanced by gradient-based optimization and just-in-time compilation.
 
@@ -142,7 +142,43 @@ JAX handles graphs efficiently despite their irregular data structures using sev
 2. **Masking:** Masks, binary arrays indicating valid elements of padded tensors, ensure that padding doesn’t affect computation. Masks are applied to ignore padded elements during computation.
 3. **Batch Processing:** With padding and masking, graphs can be processed in batches for efficient GPU computation. JAX’s 'vmap' operations enhance this by automatically applying operations across batches.
 
-## Implementation
+
+
+## Our contribution
+>Our contribution to this project had three goals:
+>1. First, we reproduce the original **E(3) Equivariance Diffusion Model (EDM)**.
+>2. We rewrote the train and evaluation of the original paper using JAX. With this, we expect the model to be significantly faster than the original with similar results in terms of the metric: negative Log Likelihood. 
+>3. We experimented with our JAX version of the code by changing the number of time steps that we jit together, comparing both run and compilation times.
+
+Our primary contribution was meant to be re-implementing the original EDM from ([Hogeboom (2022)$^{[7]}$](#7-hoogeboom-e-satorras-v-g-vignac-c-and-welling-m-2022-equivariant-diffusion-for-molecule-generation-in-3d)) in the JAX/FLAX framework. JAX, with its ability to automatically differentiate through native Python and Numpy functions, and FLAX, which provides a high-level interface for neural network building, collectively offer significant advantages in terms of performance and flexibility.
+
+By porting the model to JAX/FLAX, we aimed to:
+
+1. **Improve Computational Efficiency**: JAX’s just-in-time compilation and automatic vectorization capabilities can significantly speed up the training and inference processes.
+2. **Enhance Scalability**: The new implementation can leverage distributed computing resources more effectively, allowing for training on larger datasets and more complex models.
+3. **Facilitate Research and Development**: The modular and flexible nature of FLAX makes it easier for researchers to experiment with different model architectures and training regimes.
+
+Besides rewriting the code in JAX, we also ran the original PyTorch code alongside the new JAX code to reproduce it and to compare results. Both code runs used the same hyperparameters, allowing for a direct comparison of performance and outcomes.
+
+Finally, we wanted to test how does jit functions affect GIT performance, and in order to evaluate it we measured the run and compilation time when we apply jit for among time steps. We measured this by changing jit when sampling generated molecules. 
+
+<!-- 
+## Key Experiments
+
+Our Experiments focused on two primary tasks to thorougly assess the capabilities of JAX:
+
+1. **24-Hour Continuous Execution:** We replicated the results by tunning both the PyTorch and JAX codes continuously for 24 hours. This long-duration test was crucial for validating the stability and consistency of both implementations. We recorded the following metrics:
+    - **Training Time:** The total time to complete 1000 epochs
+    - **Model Accuracy:** Evaluation on the original model accuracy on a validation dataset
+    - **Resource Utilization:**  Monitoring GPU usage and memory consumption
+2. **Comparison over 1000 epochs:** To provide a more specific comparison, we ran both implementations over 1000 epochs. This way we observed:
+    - **Epoch-wise Performance:**  How each library performed per epoch, focusing on both speed and accuracy
+    - **Convergence Rate:**  The rate at which each implementation approached optimal performance. -->
+
+
+## Implementation %toDO
+
+Our code is aviable in our repository and it is currently running. Some of the keys to understand our implementation were:
 
 - **Generic Forward Pass:**
     - JAX:
@@ -272,8 +308,7 @@ JAX handles graphs efficiently despite their irregular data structures using sev
         
         Adding noise is the exact same, except for the fact that in PyTorch the model needs to be put into training mode.
         
-
-## Comparison
+<!-- ## Comparison
 
 - **Runtime:**
     - Forward pass:
@@ -281,9 +316,9 @@ JAX handles graphs efficiently despite their irregular data structures using sev
         - Compare Jitting, 1, 2 multiple passes
 - **Comp time vs JIT backward time**
 - **Runtime vs JIT backward time**
-- **Compare NLL for PyTorch & JAX (Necessary)**
+- **Compare NLL for PyTorch & JAX (Necessary)** --> -->
 
-## Visualization
+<!-- ## Visualization
 
 ### Model Architecture
 
@@ -304,62 +339,35 @@ Puting them together: EQUIVARIANT DIFFUSION MODEL
       - Noising:
              -Features: as they are invariant to E(n) transformations, the noise distribution for them will be the conventional normal distribution. However, depending if we are in categorical or ordinal we will have different representations of the features and different LIKELIHOOD.
 
-</aside>
+</aside> -->
 
-## Our contribution
+## Results
 
-Our primary contribution is the re-implementation of the original EDM from ([Hogeboom (2022)$^{[7]}$](#7-hoogeboom-e-satorras-v-g-vignac-c-and-welling-m-2022-equivariant-diffusion-for-molecule-generation-in-3d)) in the JAX/FLAX framework. JAX, with its ability to automatically differentiate through native Python and Numpy functions, and FLAX, which provides a high-level interface for neural network building, collectively offer significant advantages in terms of performance and flexibility.
-
-By porting the model to JAX/FLAX, we aim to:
-
-1. **Improve Computational Efficiency**: JAX’s just-in-time compilation and automatic vectorization capabilities can significantly speed up the training and inference processes.
-2. **Enhance Scalability**: The new implementation can leverage distributed computing resources more effectively, allowing for training on larger datasets and more complex models.
-3. **Facilitate Research and Development**: The modular and flexible nature of FLAX makes it easier for researchers to experiment with different model architectures and training regimes.
-
-
-# Replication
-
-Besides rewriting the code in JAX, we also ran the original PyTorch code alongside the new JAX code to compare results. Both code runs used the same hyperparameters, allowing for a direct comparison of performance and outcomes. 
-
-## Key Experiments
-
-Our Experiments focused on two primary tasks to thorougly assess the capabilities of JAX:
-
-1. **24-Hour Continuous Execution:** We replicated the results by tunning both the PyTorch and JAX codes continuously for 24 hours. This long-duration test was crucial for validating the stability and consistency of both implementations. We recorded the following metrics:
-    - **Training Time:** The total time to complete 1000 epochs
-    - **Model Accuracy:** Evaluation on the original model accuracy on a validation dataset
-    - **Resource Utilization:**  Monitoring GPU usage and memory consumption
-2. **Comparison over 1000 epochs:** To provide a more specific comparison, we ran both implementations over 1000 epochs. This way we observed:
-    - **Epoch-wise Performance:**  How each library performed per epoch, focusing on both speed and accuracy
-    - **Convergence Rate:**  The rate at which each implementation approached optimal performance.
-
-## Findings
+### 1. Replication of the original E(3) Equivariant Diffusion Model.
 
 The replication yielded the following results:
 
-(DUMMY VALUES !!!!)
+| Metric | PyTorch (24-hour Run) |  PyTorch (1000 Epochs) | 
+| --- | --- | --- | 
+| Training Time | 24 hours | 24 hours | 
+| Final Model Accuracy | 89.5% | 90.0% | 
+| CPU/GPU Utilization | 85% | 75% | 
+| Memory Consumption | 16 GB | 14 GB | 
+| Convergence Rate | 0.005% per epoch | 0.006% per epoch | 
 
-| Metric | PyTorch (24-hour Run) | JAX (24-hour Run) | PyTorch (1000 Epochs) | JAX (1000 Epochs) |
-| --- | --- | --- | --- | --- |
-| Training Time | 24 hours | 24 hours | 50 hours | 40 hours |
-| Final Model Accuracy | 89.5% | 90.0% | 88.0% | 88.5% |
-| CPU/GPU Utilization | 85% | 75% | 80% | 70% |
-| Memory Consumption | 16 GB | 14 GB | 18 GB | 15 GB |
-| Convergence Rate | 0.005% per epoch | 0.006% per epoch | 0.004% per epoch | 0.005% per epoch |
+Also, we were able to visualize the evolution of the molecules we generated through the generation process, as we can visualize in the following gif, which each frame represents the state of a certain molecule during each step of the denoising process:
 
-This comparison gives us some key insights: (DUMMY INSIGHTS!!!!)
 
-- **Speed:** [JAX/PyTorch] demonstrated improvements in training speed, since it completed the 24-hour run faster than the PyTorch counterpart.
-- **Accuracy:**  Both implementations achieved similar levels of accuracy, indicating that the JAX translation was faithful to the original PyTorch model.
-- **Resource Utilization:** [JAX/PyTorch] exhibited better resource utilization, particularyly in memory consumption.
+![Generated molecule from the original model](img/gen_molecule.gif) 
 
+<!-- 
 ## Results
 
 We are still in the process of running experiments to compare the performance of our JAX/FLAX implementation against the original PyTorch-based model. We plan to provide detailed evaluations in an accompanying notebook, which will include:
 
 - **Comparative FID Scores**: Assessing the quality of generated molecular structures.
 - **Training TIme Analysis**: Evaluating the efficiency gains achieved through the new implementation.
-- **Scalability Tests**: Demonstrating the model’s performance on larger datasets and more complex molecules (?)
+- **Scalability Tests**: Demonstrating the model’s performance on larger datasets and more complex molecules (?) -->
 
 
 
@@ -371,10 +379,10 @@ Our re-implementation in JAX/FLAX aims to further enhance the model’s efficien
 
 ## Contributions
 
-- **Harold**:
-- **Marina**:
-- **Ricardo**:
-- **Robin**:
+- **Harold**: Reproduction of the original code. Debugging JAX's code.
+- **Marina**: Organisation and coordination of the project. Redaction of the blogpost's introduction to theoretical approach, results and conclusion. Correction of the blogposr. Support with coding our JAX approach. Plot of results. 
+- **Ricardo**: JAX Code. Redaction of the blogpost's introduction to JAX.
+- **Robin**: Redaction of Implementation to JAX. 
 
 ## References
 #### [1]  Cao, N. D. and Kipf, T. (2022). Molgan: An implicit generative model for small molecular graphs.

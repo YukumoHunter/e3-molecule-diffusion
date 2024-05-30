@@ -184,7 +184,7 @@ Our Experiments focused on two primary tasks to thorougly assess the capabilitie
     - **Convergence Rate:**  The rate at which each implementation approached optimal performance. -->
 
 
-## Implementation %toDO
+## Implementation 
 
 Our code is aviable in our repository and it is currently running. Some of the keys to understand our implementation were:
 
@@ -408,8 +408,8 @@ Our re-implementation in JAX/FLAX aims to further enhance the model’s efficien
 
 - **Harold**: Reproduction of the original code. Debugging JAX's code.
 - **Marina**: Organisation and coordination of the project. Redaction of the blogpost's introduction to theoretical approach, results and conclusion. Correction of the blogpost. README. Support with coding our JAX approach. Plot of results. 
-- **Ricardo**: JAX Code. Redaction of the blogpost's introduction to JAX.
-- **Robin**: Blogspost setup. Redaction of Implementation to JAX. Blogspot review. README. 
+- **Ricardo**: JAX Code and JIT time steps experiment. Redaction of the blogpost's Implementation to JAX.
+- **Robin**: Blogspost setup. Redaction of the blogpost's Introduction and Implementation to JAX. Blogspot review. README. 
 
 ## References
 #### [1]  Cao, N. D. and Kipf, T. (2022). Molgan: An implicit generative model for small molecular graphs.

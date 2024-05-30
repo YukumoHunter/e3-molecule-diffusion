@@ -20,12 +20,19 @@ repo
 |-- blogpost.md                # Main deliverable: a blogpost style report
 |-- src                        # Contains the main project files
 |   |-- configs                # Configuration files
+|   |   |..
 |   |-- data                   # Data handling and preprocessing scripts
+|   |   |..
 |   |-- egnn                   # Equivariant Graph Neural Network implementation
+|   |   |..
 |   |-- equivariant_diffusion  # Diffusion model implementation
+|   |   |..
 |   |-- generated_samples      # Generated molecular samples
+|   |   |..
 |   |-- qm9                    # QM9 dataset handling
+|   |   |..
 |   |-- main_qm9.py                    # Main script for running the model
+|   |-- ..
 ```
 
 # Getting Started

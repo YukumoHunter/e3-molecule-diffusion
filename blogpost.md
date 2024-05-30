@@ -58,13 +58,19 @@ $$
 Then, the posterior of the transitions conditioned on $\mathbf{x}$ gives the **true denoising process**, which we can use to define our generative model:
 
 $$
-q(z_s | \mathbf{x}, z_t) = \mathcal{N} (z_s | \mathbf{\mu}_{t \rightarrow s} (\mathbf{x}, \mathbf{z}_t), \sigma^2_{t \rightarrow s} \mathbf{I}) and  \sigma_{t \rightarrow s} = \frac{\sigma_{t|s} \sigma_s}{\sigma_t}
+q(z_s | \mathbf{x}, z_t) = \mathcal{N} (z_s | \mathbf{\mu}_{t \rightarrow s} (\mathbf{x}, \mathbf{z}_t), \sigma^{2}\_{t \rightarrow s} \mathbf{I})
+$$ 
+
+and 
+
+$$
+\sigma_{t \rightarrow s} = \frac{\sigma_{t|s} \sigma_s}{\sigma_t}
 $$
 
-with $s= 0,...,T$ and $s<t$ , setting:
+with $s= 0,...,T$ and $s \textless t$ , setting:
 
 $$
-\mathbf{\mu}_{t \rightarrow s} (\mathbf{x}, \mathbf{z}_t) = \frac{\alpha_{t|s} \sigma_s^2}{\sigma_t^2} \mathbf{z_t} + \frac{\alpha_s \sigma^2_{t|s}}{\sigma_t^2} \mathbf{x} .
+\mathbf{\mu}\_{t \rightarrow s} (\mathbf{x}, \mathbf{z}\_t) = \frac{\alpha_{t|s} \sigma_s^{2}}{\sigma_t^{2}} \mathbf{z_t} + \frac{\alpha_s \sigma^{2}\_{t|s}}{\sigma_t^{2}} \mathbf{x} .
 $$ 
 
 In fact, during the generative process, variable $\mathbf{x}$ is unkown, so we replace it with an approximation $\mathbf{\hat{x}} = \phi(z_t, t)$ given by a neural network $\phi$.
@@ -375,7 +381,11 @@ However, we would like to finish what we started and get the promising results t
 
 The goal of this experiment was to find the optimum of speed through a balance among run and compilation time, as JIT let us the possiblity of of jit a certain number of steps. However, the bigger the number of number of steps, the larger time compilation requires. 
 
+<<<<<<< HEAD
 Unfortunately, the problems we had for running codes also affected this section and, even if we had everything ready to be runed, we couldn't get the results. 
+=======
+Unfortunately, the problems we had for running codes also affected this section and, even if we had everything ready to be runed, we couldn't get the results.
+>>>>>>> 55bb64039c730142957ad51ff9839814c00823b6
 
 <!-- 
 ## Results

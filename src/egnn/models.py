@@ -99,23 +99,31 @@ class EGNN_dynamics_QM9(nn.Module):
             h = xh[:, self.n_dims :]
 
         if self.condition_time:
-            prod = jnp.prod(jnp.array(t.shape))
-            if prod == 1:
-                # t is the same for all elements in batch.
-                h_time = jnp.empty_like(h[:, 0:1]).fill_(t.item())
-            else:
-                # t is different over the batch dimension.
-                h_time = t.reshape(bs, 1)
+            # prod = jnp.prod(jnp.array(t.shape))
+            # if prod == 1:
+            #     print("equals 1")
+            #     # t is the same for all elements in batch.
+            #     h_time = jnp.empty_like(h[:, 0:1]).fill_(t.item())
+            # else:
+            #     # t is different over the batch dimension.
+            #     h_time = t.reshape(bs, 1)
+            #     # print(f"h_time initial: {h_time.shape}")
+            #     h_time = h_time.repeat(n_nodes, axis=1)
+            #     # print(f"h_time repeated: {h_time.shape}")
+            #     h_time = h_time.reshape(bs * n_nodes, 1)
 
-                # print(f"h_time initial: {h_time.shape}")
+            # t is different over the batch dimension.
+            h_time = t.reshape(bs, 1)
 
-                h_time = h_time.repeat(n_nodes, axis=1)
+            # print(f"h_time initial: {h_time.shape}")
 
-                # print(f"h_time repeated: {h_time.shape}")
+            h_time = h_time.repeat(n_nodes, axis=1)
 
-                h_time = h_time.reshape(bs * n_nodes, 1)
+            # print(f"h_time repeated: {h_time.shape}")
 
-                # print(f"h_time final: {h_time.shape}")
+            h_time = h_time.reshape(bs * n_nodes, 1)
+
+            # print(f"h_time final: {h_time.shape}")
             h = jnp.concatenate([h, h_time], axis=1)
 
         if context is not None:
@@ -127,9 +135,14 @@ class EGNN_dynamics_QM9(nn.Module):
             # h_final, x_final = self.egnn(
             #     edges, h, x, node_mask=node_mask, edge_mask=edge_mask
             # )
+            # print(f"{h = }")
+
             h_final, x_final = self.egnn(
                 h, x, edges, node_mask=node_mask, edge_mask=edge_mask
             )
+
+            # print(f"{h_final = }")
+
             vel = (
                 x_final - x
             ) * node_mask  # This masking operation is redundant but just in case
@@ -164,8 +177,13 @@ class EGNN_dynamics_QM9(nn.Module):
         if h_dims == 0:
             return vel
         else:
+            # print(f"{vel = }")
+            # print()
+            # print(f"{h_final = }")
             h_final = h_final.reshape(bs, n_nodes, -1)
-            return jnp.concatenate([vel, h_final], axis=2)
+
+            vel = jnp.concatenate([vel, h_final], axis=2)
+            return vel
 
     def get_adj_matrix(self, n_nodes, batch_size):
         edges_dict = self.variables["mutable_variables"]["edges_dict"]

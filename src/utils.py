@@ -33,49 +33,51 @@ def load_model(path):
 
 
 # Gradient clipping
-class Queue:
-    def __init__(self, max_len=50):
-        self.items = [3000]
-        self.max_len = max_len
+# class Queue:
+#     def __init__(self, max_len=50, dtype=float):
+#         self.items = np.array([3000], dtype=dtype)
+#         self.max_len = max_len
+#         self.dtype = dtype
 
-    def __len__(self):
-        return len(self.items)
+#     def __len__(self):
+#         return len(self.items)
 
-    def add(self, item):
-        self.items.insert(0, item)
-        if len(self) > self.max_len:
-            self.items.pop()
+#     def add(self, item):
+#         item = self.dtype(item)  # Ensure the item is of the correct dtype
+#         self.items = np.insert(self.items, 0, item)
+#         if len(self) > self.max_len:
+#             self.items = np.delete(self.items, -1)
 
-    def mean(self):
-        return np.mean(self.items)
+#     def mean(self):
+#         return np.mean(self.items)
 
-    def std(self):
-        return np.std(self.items)
+#     def std(self):
+#         return np.std(self.items)    
 
-class GradientClippingState(NamedTuple):
-    gradnorm_queue: Any
+# class GradientClippingState(NamedTuple):
+#     gradnorm_queue: Any
 
-def gradient_clipping(gradnorm_queue: Queue, max_len=50):
-    def init_fn(params):
-        return GradientClippingState(gradnorm_queue=gradnorm_queue)
+# def gradient_clipping(gradnorm_queue: Queue, max_len=50):
+#     def init_fn(params):
+#         return GradientClippingState(gradnorm_queue=gradnorm_queue)
 
-    def update_fn(updates, state, params=None):        
-        # Update the queue with the new grad norm
-        mean = state.gradnorm_queue.mean()
-        std = state.gradnorm_queue.std()
-        max_grad_norm = 1.5 * mean + 2 * std
+#     def update_fn(updates, state, params=None):        
+#         # Update the queue with the new grad norm
+#         mean = state.gradnorm_queue.mean()
+#         std = state.gradnorm_queue.std()
+#         max_grad_norm = 1.5 * mean + 2 * std
         
-        grad_norm = optax.global_norm(updates)
-        state.gradnorm_queue.add(min(float(grad_norm), float(max_grad_norm)))
+#         grad_norm = optax.global_norm(updates)
+#         state.gradnorm_queue.add(min(float(grad_norm), float(max_grad_norm)))
 
-        # Clip gradients
-        clipped_updates = jax.tree_util.tree_map(
-            lambda g: jnp.clip(g, -max_grad_norm, max_grad_norm), updates
-        )
+#         # Clip gradients
+#         clipped_updates = jax.tree_util.tree_map(
+#             lambda g: jnp.clip(g, -max_grad_norm, max_grad_norm), updates
+#         )
 
-        return clipped_updates, state
+#         return clipped_updates, state
 
-    return optax.GradientTransformation(init_fn, update_fn)
+#     return optax.GradientTransformation(init_fn, update_fn)
 
 # Use the custom gradient clipping in AdamW_with_amsgrad
 def AdamW_with_amsgrad_clipping_ema(
@@ -91,14 +93,14 @@ def AdamW_with_amsgrad_clipping_ema(
     ema_decay = 0.9999
 ):
     if gradnorm_queue:
-        queue = Queue(max_len=gradnorm_queue)
+        # queue = Queue(max_len=gradnorm_queue)
 
         return optax.chain(
             optax.scale_by_amsgrad(
             b1=b1, b2=b2, eps=eps, eps_root=eps_root, mu_dtype=mu_dtype),
             optax.add_decayed_weights(weight_decay, mask),
             optax.scale_by_learning_rate(learning_rate),
-            gradient_clipping(queue),
+            # gradient_clipping(queue),
             optax.ema(decay = ema_decay)
         )
     else:

@@ -367,18 +367,18 @@ class EnVariationalDiffusion(nn.Module):
     def check_issues_norm_values(self, num_stdevs=8):
         zeros = jnp.zeros((1, 1))
         gamma_0 = self.gamma(zeros)
-        sigma_0 = self.sigma(gamma_0, target_tensor=zeros).item()
+        sigma_0 = self.sigma(gamma_0, target_tensor=zeros)
 
         # Checked if 1 / norm_value is still larger than 10 * standard
         # deviation.
         max_norm_value = max(self.norm_values[1], self.norm_values[2])
 
-        if sigma_0 * num_stdevs > 1.0 / max_norm_value:
-            raise ValueError(
-                f"Value for normalization value {max_norm_value} probably too "
-                f"large with sigma_0 {sigma_0:.5f} and "
-                f"1 / norm_value = {1. / max_norm_value}"
-            )
+        # if sigma_0 * num_stdevs > 1.0 / max_norm_value:
+        #     raise ValueError(
+        #         f"Value for normalization value {max_norm_value} probably too "
+        #         f"large with sigma_0 {sigma_0:.5f} and "
+        #         f"1 / norm_value = {1. / max_norm_value}"
+        #     )
 
     def phi(self, x, t, node_mask, edge_mask, context):
         net_out = self.dynamics._forward(t, x, node_mask, edge_mask, context)
@@ -520,7 +520,10 @@ class EnVariationalDiffusion(nn.Module):
 
         # Compute KL for h-part.
         zeros, ones = jnp.zeros_like(mu_T_h), jnp.ones_like(sigma_T_h)
-        kl_distance_h = vmap(self.gaussian_KL)(
+        # kl_distance_h = vmap(gaussian_KL)(
+        #     mu_T_h, sigma_T_h, zeros, ones, node_mask
+        # )
+        kl_distance_h = gaussian_KL(
             mu_T_h, sigma_T_h, zeros, ones, node_mask
         )
 
@@ -828,11 +831,11 @@ class EnVariationalDiffusion(nn.Module):
             },
         )
 
-    def __call__(self, x, h, node_mask=None, edge_mask=None, context=None):
-        return self.forward(x, h, node_mask, edge_mask, context)
+    def __call__(self, x, h, node_mask=None, edge_mask=None, context=None, train = True):
+        return self.forward(x, h, node_mask, edge_mask, context, train = True)
 
     # 27
-    def forward(self, x, h, node_mask=None, edge_mask=None, context=None):
+    def forward(self, x, h, node_mask=None, edge_mask=None, context=None, train = True):
         """
         Computes the loss (type l2 or NLL) if training. And if eval then always computes NLL.
         """
@@ -843,7 +846,7 @@ class EnVariationalDiffusion(nn.Module):
         if self.training and self.loss_type == "l2":
             delta_log_px = jnp.zeros_like(delta_log_px)
 
-        if self.training:
+        if train:
             # Only 1 forward pass when t0_always is False.
             loss, loss_dict = self.compute_loss(
                 x,

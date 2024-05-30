@@ -120,8 +120,11 @@ class EGNN_dynamics_QM9(nn.Module):
             h = jnp.concatenate([h, context], axis=1)
 
         if self.mode == "egnn_dynamics":
+            # h_final, x_final = self.egnn(
+            #     edges, h, x, node_mask=node_mask, edge_mask=edge_mask
+            # )
             h_final, x_final = self.egnn(
-                edges, h, x, node_mask=node_mask, edge_mask=edge_mask
+                h, x, edges,node_mask=node_mask, edge_mask=edge_mask
             )
             vel = (
                 x_final - x

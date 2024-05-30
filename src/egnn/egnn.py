@@ -88,7 +88,7 @@ class EquivariantUpdate(nn.Module):
             self.act_fn,
             nn.Dense(self.hidden_nf),
             self.act_fn,
-            nn.Dense(1, use_bias=False, kernel_init=nn.initializers.xavier_uniform(gain=0.001))
+            nn.Dense(1, use_bias=False, kernel_init=nn.initializers.variance_scaling(scale=0.001**2, mode = "fan_avg", distribution="uniform"))
         ])
 
     def coord_model(self, h, coord, edge_index, coord_diff, edge_attr, edge_mask):
@@ -176,12 +176,12 @@ class EGNN(nn.Module):
 
         self.coords_range_layer = float(self.coords_range / self.n_layers)
 
-        if self.sin_embedding:
-            self.sin_embedding = SinusoidsEmbeddingNew()
-            edge_feat_nf = self.sin_embedding.dim * 2
-        else:
-            self.sin_embedding = None
-            edge_feat_nf = 2
+        # if self.sin_embedding:
+        #     self.sin_embedding = SinusoidsEmbeddingNew()
+        #     edge_feat_nf = self.sin_embedding.dim * 2
+        # else:
+        #     self.sin_embedding = None
+        edge_feat_nf = 2
 
         self.embedding = nn.Dense(self.hidden_nf)
         self.embedding_out = nn.Dense(out_node_nf)
@@ -197,7 +197,7 @@ class EGNN(nn.Module):
 
     def __call__(self, h, x, edge_index, node_mask=None, edge_mask=None):
         distances, _ = coord2diff(x, edge_index)
-        if self.sin_embedding is not None:
+        if self.sin_embedding:
             distances = self.sin_embedding(distances)
         h = self.embedding(h)
         for e_block in self.e_blocks:
@@ -237,7 +237,7 @@ def coord2diff(x, edge_index, norm_constant=1):
 def unsorted_segment_sum(data, segment_ids, num_segments, normalization_factor, aggregation_method: str):
     result_shape = (num_segments, data.shape[1])
     result = jnp.zeros(result_shape, dtype=data.dtype)
-    segment_ids = jnp.expand_dims(segment_ids, -1).repeat(data.shape[1], axis=-1)
+    # segment_ids = jnp.expand_dims(segment_ids, -1).repeat(data.shape[1], axis=-1)
     result = jax.ops.segment_sum(data, segment_ids, num_segments)
     if aggregation_method == 'sum':
         result = result / normalization_factor

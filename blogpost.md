@@ -70,7 +70,7 @@ $$
 with $s= 0,...,T$ and $s<t$ , setting:
 
 $$
-\mathbf{\mu}_{t \rightarrow s} (\mathbf{x}, \mathbf{z}_t) = \frac{\alpha_{t|s} \sigma_s^2}{\sigma_t^2} \mathbf{z_t} + \frac{\alpha_s \sigma^{2}\_{t|s}}{\sigma_t^2} \mathbf{x} .
+\mathbf{\mu}_{t \rightarrow s} (\mathbf{x}, \mathbf{z}_t) = \frac{\alpha_{t|s} \sigma_s^{2}}{\sigma_t^{2}} \mathbf{z_t} + \frac{\alpha_s \sigma^{2}\_{t|s}}{\sigma_t^{2}} \mathbf{x} .
 $$ 
 
 In fact, during the generative process, variable $\mathbf{x}$ is unkown, so we replace it with an approximation $\mathbf{\hat{x}} = \phi(z_t, t)$ given by a neural network $\phi$.

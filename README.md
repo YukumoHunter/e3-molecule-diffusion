@@ -13,6 +13,7 @@ in JAX.
 implementation
 
 ## Structure
+```
 repo
 .
 |-- readme.md                  # Description of the repo with relevant getting started info
@@ -25,6 +26,7 @@ repo
 |   |-- generated_samples      # Generated molecular samples
 |   |-- qm9                    # QM9 dataset handling
 |   |-- main_qm9.py                    # Main script for running the model
+```
 
 # Getting Started
 

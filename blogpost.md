@@ -381,6 +381,8 @@ However, we would like to finish what we started and get the promising results t
 
 The goal of this experiment was to find the optimum of speed through a balance among run and compilation time, as JIT let us the possiblity of of jit a certain number of steps. However, the bigger the number of number of steps, the larger time compilation requires. 
 
+Unfortunately, the problems we had for running codes also affected this section and, even if we had everything ready to be runed, we couldn't get the results.
+
 <!-- 
 ## Results
 

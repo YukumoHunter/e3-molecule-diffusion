@@ -58,7 +58,10 @@ $$
 Then, the posterior of the transitions conditioned on $\mathbf{x}$ gives the **true denoising process**, which we can use to define our generative model:
 
 $$
-q(z_s | \mathbf{x}, z_t) = \mathcal{N} (z_s | \mathbf{\mu}_{t \rightarrow s} (\mathbf{x}, \mathbf{z}_t), [\sigma^2_{t \rightarrow s} \mathbf{I}])
+q(z_s | \mathbf{x}, z_t) = \mathcal{N} (z_s | \mathbf{\mu}_{t \rightarrow s} (\mathbf{x}, \mathbf{z}_t), $$
+
+$$
+\sigma^2_{t \rightarrow s} \mathbf{I})
 $$ 
 
 and 

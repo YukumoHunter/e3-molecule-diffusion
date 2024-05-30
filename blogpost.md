@@ -10,29 +10,31 @@ Marina Orozco González, Harold Ruiter, Robin Reitsma, Ricardo Chávez Torres*
 
 ## Introduction
 
-> Discovering 3D molecular structures for medicine or new materials has conventionally been done through human expertise. However, modern deep learning techniques have proven to be a more efficient approach.
+> Discovering 3D molecular structures for medicine or new materials has conventionally been done through human expertise. Modern Deep Learning techniques have proven to be a more efficient approach.
 
-Generating 3D molecular structures that are both chemically valid and physically accurate is a critical challenge in computational chemistry and drug discovery. Traditional methods for molecular generation have relied on heuristic and rule-based approaches, which often lack the flexibility ad generalizability required to handle the vast diversity of molecular structures. In the paper we based our project on, the use of a **3D Equivariant Diffusion Model (EDM)** that has **Graph Neural Networks**, **Diffusion Models** and **E(3) equivariant** as **key components**, is introduced in order to leverage the symmetries to the Euclidean group in 3 dimensions that molecules have, outperforming previous 3D molecular generative models.
+Generating 3D molecular structures that are both chemically valid and physically accurate is a critical challenge in computational chemistry and drug discovery. Traditional methods for molecular generation have relied on heuristic and rule-based approaches, which often lack the flexibility and generalizability required to handle the vast diversity of molecular structures. In the paper we based our project on, the use of a **3D Equivariant Diffusion Model (EDM)** that has **Graph Neural Networks**, **Diffusion Models** and **E(3) equivariant** as **key components**, is introduced in order to leverage the symmetries to the Euclidean group in 3 dimensions that molecules have, outperforming previous 3D molecular generative models.
 
 ![Generated molecule from the original model](img/gen_molecule.gif) 
 
 ### Motivation
-The discovery of novel molecules is a crucial step in the development of new products that can be used for drug discovery for the treatment of complex diseases, developing material science and other molecular design related fields.  But finding new chemical compounds with desired properties is a challenging task, as the space of synthesizable molecules is vast and sear in it proves to be very difficult, mostly owing to its discrete nature [(Cao and Kipf, 2022)$ ^{[1]}$](#1--cao-n-d-and-kipf-t-2022-molgan-an-implicit-generative-model-for-small-molecular-graphs). Although conventional molecular design involves the use of human expertise to propose, synthesize and test new molecules, this process can be cost and time intensive, limiting the number and diversity of molecules that can be reasonably explored [(Bilodeau et al., 2022)$ ^{[2]}$](#2--bilodeau-c-jin-w-jaakkola-t-barzilay-r-and-jensen-k-f-2022-generative-models-for-molecular-discovery-recent-advances-and-challenges-wires-computational-molecular-science-125e1608). Indeed, it has been estimated that the number of compounds that have ever been synthesized lies around $10^8$ while the total number of theoretically feasible compounds lies between $10^{23}$ and $10^{60}$ (Polishchuk et al., 2013).
+The discovery of novel molecules is a crucial step in the development of new products that can be used for drug discovery for the treatment of complex diseases, developing material science and other molecular design related fields.  But finding new chemical compounds with desired properties is a challenging task, as the space of synthesizable molecules is vast and sear in it proves to be very difficult, mostly owing to its discrete nature [(Cao and Kipf, 2022)$ ^{[1]}$](#1--cao-n-d-and-kipf-t-2022-molgan-an-implicit-generative-model-for-small-molecular-graphs). Although conventional molecular design involves the use of human expertise to propose, synthesize and test new molecules, this process can be cost and time intensive, limiting the number and diversity of molecules that can be reasonably explored [(Bilodeau et al., 2022)$ ^{[2]}$](#2--bilodeau-c-jin-w-jaakkola-t-barzilay-r-and-jensen-k-f-2022-generative-models-for-molecular-discovery-recent-advances-and-challenges-wires-computational-molecular-science-125e1608). Indeed, it has been estimated that the number of compounds that have ever been synthesized lies around $10^8$ while the total number of theoretically feasible compounds lies between $10^{23}$ and $10^{60}$ [(Polishchuk et al., 2013)$^{[3]}$]().
 
-In light of this situation, modern deep learning techniques provides an alternative and more efficient approach to achieve this through generative models. There are two characteristics of deep learning that makes it particularly promising when applied to molecules: First, they can cope with “unstructured” data representations such as text sequences, speech signals, images and graphs. Second, deep learning can perform feature extraction from the input data, that is, produce data-driven features from the input data without the need for manual intervention [(Atz et al., 2021)$ ^{[3]}$](#3--kenneth-atz-and-francesca-grisoni-and-gisbert-schneider-2021-ggeometric-deep-learning-on-molecular-representations)
+In light of this situation, modern Deep Learning techniques provides an alternative and more efficient approach to achieve this through generative models. There are two characteristics of Deep Learning that makes it particularly promising when applied to molecules: First, they can cope with “unstructured” data representations such as text sequences, speech signals, images and graphs. Second, Deep Learning can perform feature extraction from the input data, that is, produce data-driven features from the input data without the need for manual intervention [(Atz et al., 2021)$ ^{[4]}$](#4--kenneth-atz-and-francesca-grisoni-and-gisbert-schneider-2021-geometric-deep-learning-on-molecular-representations).
 
 ## Key points
 ### Introduction to Graphs
-Concerning the use of deep learning techniques for molecules generation, according with [(Maziarz et al., 2022)$ ^{[4]}$](#4--maziarz-k-jackson-flux-h-cameron-p-sirockin-f-schneider-n-stiefl-n-segler-m-and-brockschmidt-m-2022-learning-to-extend-molecular-scaffolds-with-structural-motifs), early approaches relied on the textual SMILES representation and on the reuse of architectures from natural language processing. 
+Concerning the use of Deep Learning techniques for molecules generation, according with [(Maziarz et al., 2022)$ ^{[5]}$](#5--maziarz-k-jackson-flux-h-cameron-p-sirockin-f-schneider-n-stiefl-n-segler-m-and-brockschmidt-m-2022-learning-to-extend-molecular-scaffolds-with-structural-motifs), early approaches relied on the textual SMILES (Simplified molecular input line entry system) representation and on the reuse of architectures from Natural Language processing: treating molecules elements like atoms, bonds, etc. as the words of an NLP model.
 
-However, since 2018 we can observe the use of **Graph Neural Networks (GNN)** for this goal, as stated in [(Cao and Kipf, 2022)$ ^{[1]}$](#1--cao-n-d-and-kipf-t-2022-molgan-an-implicit-generative-model-for-small-molecular-graphs), due to the great improvements that were made on graphs in the area of deep learning during 2017 [(Bronstein et al., 2017)$^{[5]}$](#5-bronstein-m-m-bruna-j-lecun-y-szlam-a-and-vandergheynst-p-2017-geometric-deep-learning-going-beyond-euclidean-data-ieee-signal-processing-magazine-3441842). Using graphs is convenient for this goal as this representation is able to encapsulate crucial structural information for molecules generation. Moreover, is has the benefit that all generated outputs are valid graphs (but not necessarily valid molecules).
+![Representation of SMILE approaches for molecules generation](img/smile.png)
+
+However, since 2018 we can observe the use of **Graph Neural Networks (GNN)** for this goal, as stated in [(Cao and Kipf, 2022)$ ^{[1]}$](#1--cao-n-d-and-kipf-t-2022-molgan-an-implicit-generative-model-for-small-molecular-graphs), due to the great improvements that were made on graphs in the area of deep learning during 2017 [(Bronstein et al., 2017)$^{[6]}$](#6-bronstein-m-m-bruna-j-lecun-y-szlam-a-and-vandergheynst-p-2017-geometric-deep-learning-going-beyond-euclidean-data-ieee-signal-processing-magazine-3441842). Using graphs is convenient for this goal as this representation is able to encapsulate crucial structural information for molecules generation. Moreover, is has the benefit that all generated outputs are valid graphs (but not necessarily valid molecules).
 
 ![Exemplary molecular representations for a selected molecule a. Two-dimensional depiction b. Molecular graph (2D) composed of vertices (atoms) and edges (bonds). (Atz et al., 2021)](img/graph_mol.png)
 
 ### Introduction to  Diffusion Models
-As we said, the paper we used as baseline, [Hoogeboom et al. (2022)$^{[6]}$](#6-hoogeboom-e-satorras-v-g-vignac-c-and-welling-m-2022-equivariant-diffusion-for-molecule-generation-in-3d), combines the use of **GNN** with **Diffusion Models (DMs)**, standing as the first Diffusion Model that generates molecules in 3D space. 
+As we said, the paper we used as baseline, [Hoogeboom et al. (2022)$^{[7]}$](#7-hoogeboom-e-satorras-v-g-vignac-c-and-welling-m-2022-equivariant-diffusion-for-molecule-generation-in-3d), combines the use of **GNN** with **Diffusion Models (DMs)**, standing as the first Diffusion Model that generates molecules in 3D space. 
 
-The use of Diffusion Models have gained more attention since the introduction of the Diffusion Probabilistic Models (DPMs) framework by [Dhariwal and Nichol (2021)$^{[7]}$](#7-dhariwal-p-and-nichol-a-2021-diffusion-models-beat-gans-on-image-synthesis) in 2020. They have shown remarkable success in generating high-quality data across various domains, including image synthesis and audio generation. 
+The use of Diffusion Models have gained more attention since the introduction of the Diffusion Probabilistic Models (DPMs) framework by [Dhariwal and Nichol (2021)$^{[8]}$](#8-dhariwal-p-and-nichol-a-2021-diffusion-models-beat-gans-on-image-synthesis) in 2020. They have shown remarkable success in generating high-quality data across various domains, including image synthesis and audio generation. 
 
 These models operate by iteratively denoising a sample starting from pure noise, guided by a learned probability distribution that captures the underlying structure of the target data. 
 
@@ -40,28 +42,74 @@ In contrast to other generative models, in diffusion models the generative proce
 
 ![Picture from](img/diffusion_cat.png)
 
+The **diffusion process** consists of progressively adding noise to $z_t$ for $t=0,...,T$ given a starting point $\mathbf{x}$ by sampling from the multivariate normal distribution:
+
+$$ 
+q(z_t|\mathbf{x})= \mathcal{N}(z_t|\alpha_t \mathbf{x}_T, \sigma_t^2 \mathbf{I})  
+$$
+
+Where $\alpha_t \in \mathbb{R}^+$ controls how much signal is retained and $\sigma_t \in \mathbb{R}^+$ how much noise is added. As the diffusion process is Markov, the entire noising process can be written as:
+
+
+$$ 
+q(z_0, z_1, ..., z_T|\mathbf{x})= q(z_0 \ \mathbf{x}) \prod_{t=1}^T q(z_t | z_{t-1})
+$$
+
+Then, the posterior of the transitions conditioned on $\mathbf{x}$ gives the **true denoising process**, which we can use to define our generative model:
+
+$$
+q(z_s | \mathbf{x}, z_t) = \mathcal{N} (z_s | \mathbf{\mu}_{t \rightarrow s} (\mathbf{x}, \mathbf{z}_t), \sigma^2_{t \rightarrow s} \mathbf{I}) \, \, \, and \, \, \, \sigma_{t \rightarrow s} = \frac{\sigma_{t|s} \sigma_s}{\sigma_t}
+$$
+with $s= 0,...,T$ and $s<t$, setting:
+
+$$
+\mathbf{\mu}_{t \rightarrow s} (\mathbf{x}, \mathbf{z}_t) = \frac{\alpha_{t|s} \sigma_s^2}{\sigma_t^2} \mathbf{z_t} + \frac{\alpha_s \sigma^2_{t|s}}{\sigma_t^2} \mathbf{x} .
+
+$$ 
+
+In fact, during the generative process, variable $\mathbf{x}$ is unkown, so we replace it with an approximation $\mathbf{\hat{x}} = \phi(z_t, t)$ given by a neural network $\phi$.
+
 ### Introduction to Equivariance transformations
+
+The reason why using an equivariance approach for molecule generation is convenient lies on the inherent symmetries of molecular structures to those transformations. By leveraging symmetries, equivariant models can reduce redundant computations. For instance, once a particular arrangement is learned, its symmetric counterparts are automatically accounted for, which can lead to more efficient training and inference processes.
 
 A function f is said to be equivariant to the action of a group
 G if:
 
 $$T_g(f(\mathbf{x}))=f(S_g(\mathbf{x})), \forall g \in G$$
 
-Where $S_g, T_g$ are linear representations related to the group element $g$ ([Serre (1977) $^{[8]}$](#8-j-p-serre-1977-linear-representations-of-finite-groups)). In this work, we only consider the Euclidean group E(3) generated by translations, rotations and reflections. In this case, become a translation $\mathbf{t}$ and an orthogonal matrix $\mathbf{R}$ that rotates or reflects coordinates. We will have then that the function $f$ is equivariant to a rotatio or reflection $\mathbf{R}$ if:
+Where $S_g, T_g$ are linear representations related to the group element $g$ ([Serre (1977) $^{[9]}$](#9-j-p-serre-1977-linear-representations-of-finite-groups)). In this work, we only consider the Euclidean group E(3) generated by translations, rotations and reflections. We will have then that the function $f$ is equivariant to a translation $\mathbf{t}$ and an orthogonal matrix $\mathbf{R}$ that rotates or reflects coordinates if:
 
-$$\mathbf{R} f(\mathbf{x})=f(\mathbf{Rx})$$
+$$\mathbf{R} f(\mathbf{x}) + \mathbf{t}=f(\mathbf{Rx + t})$$
 
-The reason why using an equivariance approach for molecule generation is convenient lies on the inherent symmetries of molecular structures to those transformations. By leveraging symmetries, equivariant models can reduce redundant computations. For instance, once a particular arrangement is learned, its symmetric counterparts are automatically accounted for, which can lead to more efficient training and inference processes.
 
 ### EDM: E(3) Equivariance Diffusion Model for molecules generation
 
+> The Equivariance Diffusion Model has the following four key points: 
+> 1.  It uses a generative diffusion process for molecules generation: modelates $q(\mathbf{z}_t |\mathbf{x,h})$.
+> 2. The distribution from which noise, coordinates $\hat{x}$ and features $\hat{h}$ are sampled must be equivariant: use of **center of gravity**.
+> 3. The Neural Network $\phi$ that predicts coordinates $x$ and features $h$ for the distribution must be equivariant: use of **EGNN**.
+> 4. It is easier to optimize the Neural Network $\phi$ if it predicts the Gaussian noise $\hat{\epsilon}$ that is used for predicting $\hat{x}$ and $\hat{h}$. 
+
 In this work interactions between all atoms are considered and model through a fully connected graph $\mathcal{G}$ with nodes $v_i \in \mathcal{V}$. Each node $v_i$ has associated a coordinate representation $\mathbf{x}_i \in \mathbb{R}^3$ and an attribute vector $ \mathbf{h}_i \in \mathbb{R}^d$ .
 
-The EGNN architecture is composed of L EGCL layers wich applies the non-linear transformation:
+In our case, we want the denoising distribution to be equivariant for the reasons discussed in the [Introduction to Equivariance section](#introduction-to-equivariance-transformations), and thus, we want the denoising distribution from the  [introduction to diffusion](#introduction-to--diffusion-models) section, to be equivariant. That distribution, applied to $x$ and $h$ will be:
 
-$$ \hat{\mathbf{x}}_h, \hat{\mathbf{h}} = EGNN[\mathbf{x}^0, \mathbf{h}^0 ] $$  
+$$
+q(\mathbf{z}_t |\mathbf{x,h}) = \mathcal{N}_{xh} (\mathbf{z}_t | \alpha_t [\mathbf{x,h}], \sigma_t^2 \mathbf{I}) = \mathcal{N}_{x} (\mathbf{z}_t^{(x)} | \alpha_t \mathbf{x}, \sigma_t^2 \mathbf{I}) \cdot\mathcal{N} (\mathbf{z}_t^{(h)} | \alpha_t \mathbf{h}, \sigma_t^2 \mathbf{I})
+$$
 
-Which satisfies the required equivariant property we saw before in \ref{nosé}.
+Where we use a conventional normal distribution $\mathcal{N}$ for the features $\mathbf{h}$ because they are invariant to $E(n)$, and a normal distribution $\mathcal{N}_x$ on the linear subspace where the center of gravity of $\mathbf{x}$ is zero: $\sum_i \mathbf{x}_i = \mathbf{0}$, to lead with the non invariance of $\mathbf{x}$ to such transformations. 
+
+Also, the neural network $\phi$ we use for approximiating $x$ and $h$ must be equivariant as well. For that, we use **EGNN**, a type of Graph Neural Network that satisfies the equivariance constraint.
+
+
+The EGNN architecture is composed of L Equivariant Convolutional Layers EGCL layers wich applies non-linear transformation, that owe their equivariance to the fact that they use  the coordinates difference among all nodes in the molecule.
+
+According with [Ho et al. (2020)$^{[10]}$](#10-ho-j-jain-a-and-abbeel-p-denoising-diffusion-probabilistic-models-arxiv-preprint-arxiv200611239-2020), it is actually easier to optimize the neural network $\phi$ when we predict the Gaussian noise $\hat{\epsilon} = [\hat{\epsilon}_x,\hat{\epsilon}_h]$ of $\hat{x}$ and $\hat{h}$ instead, with $\hat{\mathbf{\epsilon}}_t = \phi(z_t, t)$ such that:
+$$
+[\mathbf{\hat{x}}, \mathbf{\hat{h}}] = \mathbf{z}_t/ \alpha_t - \hat{\mathbf{\epsilon}}\cdot \sigma_t / \alpha_t 
+$$
 
 ### Introduction to JAX
 
@@ -260,7 +308,7 @@ Puting them together: EQUIVARIANT DIFFUSION MODEL
 
 ## Our contribution
 
-Our primary contribution is the re-implementation of the original EDM from ([Hogeboom (2022)$^{[6]}$](#6-hoogeboom-e-satorras-v-g-vignac-c-and-welling-m-2022-equivariant-diffusion-for-molecule-generation-in-3d)) in the JAX/FLAX framework. JAX, with its ability to automatically differentiate through native Python and Numpy functions, and FLAX, which provides a high-level interface for neural network building, collectively offer significant advantages in terms of performance and flexibility.
+Our primary contribution is the re-implementation of the original EDM from ([Hogeboom (2022)$^{[7]}$](#7-hoogeboom-e-satorras-v-g-vignac-c-and-welling-m-2022-equivariant-diffusion-for-molecule-generation-in-3d)) in the JAX/FLAX framework. JAX, with its ability to automatically differentiate through native Python and Numpy functions, and FLAX, which provides a high-level interface for neural network building, collectively offer significant advantages in terms of performance and flexibility.
 
 By porting the model to JAX/FLAX, we aim to:
 
@@ -333,16 +381,19 @@ Our re-implementation in JAX/FLAX aims to further enhance the model’s efficien
 
 #### [2]  Bilodeau, C., Jin, W., Jaakkola, T., Barzilay, R., and Jensen, K. F. (2022). Generative models for molecular discovery: Recent advances and challenges.
 
+#### [3] Polishchuk PG, Madzhidov TI, Varnek A. (2013 Aug). Estimation of the size of drug-like chemical space based on GDB-17 data. J Comput Aided Mol Des.
 
-#### [3]  Kenneth Atz and Francesca Grisoni and Gisbert Schneider (2021). Geometric Deep Learning on Molecular Representations. 
+#### [4]  Kenneth Atz and Francesca Grisoni and Gisbert Schneider (2021). Geometric Deep Learning on Molecular Representations. 
 
 
-#### [4]  Maziarz, K., Jackson-Flux, H., Cameron, P., Sirockin, F., Schneider, N., Stiefl, N., Segler, M., and Brockschmidt, M. (2022). Learning to extend molecular scaffolds with structural motifs.
+#### [5]  Maziarz, K., Jackson-Flux, H., Cameron, P., Sirockin, F., Schneider, N., Stiefl, N., Segler, M., and Brockschmidt, M. (2022). Learning to extend molecular scaffolds with structural motifs.
 
-#### [5] Bronstein, M. M., Bruna, J., LeCun, Y., Szlam, A., and Vandergheynst, P. (2017). Geometric deep learning: Going beyond euclidean data. IEEE Signal Processing Magazine, 34(4):18–42.
+#### [6] Bronstein, M. M., Bruna, J., LeCun, Y., Szlam, A., and Vandergheynst, P. (2017). Geometric deep learning: Going beyond euclidean data. IEEE Signal Processing Magazine, 34(4):18–42.
 
-#### [6] Hoogeboom, E., Satorras, V. G., Vignac, C., and Welling, M. (2022). Equivariant diffusion for molecule generation in 3d.
+#### [7] Hoogeboom, E., Satorras, V. G., Vignac, C., and Welling, M. (2022). Equivariant diffusion for molecule generation in 3d.
 
-#### [7] Dhariwal, P. and Nichol, A. (2021). Diffusion models beat gans on image synthesis
+#### [8] Dhariwal, P. and Nichol, A. (2021). Diffusion models beat gans on image synthesis
 
-#### [8] J.-P. Serre (1977). Linear Representations of Finite Groups
+#### [9] J.-P. Serre (1977). Linear Representations of Finite Groups
+
+#### [10] Ho, J., Jain, A., and Abbeel, P. Denoising diffusion probabilistic models. arXiv preprint arXiv:2006.11239, 2020.

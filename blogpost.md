@@ -58,7 +58,7 @@ $$
 Then, the posterior of the transitions conditioned on $\mathbf{x}$ gives the **true denoising process**, which we can use to define our generative model:
 
 $$
-q(z_s | \mathbf{x}, z_t) = \mathcal{N} (z_s | \mathbf{\mu}_{t \rightarrow s} (\mathbf{x}, \mathbf{z}_t), \sigma^2_{t \rightarrow s} \mathbf{I})  and  \sigma_{t \rightarrow s} = \frac{\sigma_{t|s} \sigma_s}{\sigma_t}
+q(z_s | \mathbf{x}, z_t) = \mathcal{N} (z_s | \mathbf{\mu}_{t \rightarrow s} (\mathbf{x}, \mathbf{z}_t), \sigma^2_{t \rightarrow s} \mathbf{I}) and  \sigma_{t \rightarrow s} = \frac{\sigma_{t|s} \sigma_s}{\sigma_t}
 $$
 
 with $s= 0,...,T$ and $s<t$ , setting:
@@ -107,6 +107,8 @@ Also, the neural network $\phi$ we use for approximiating $x$ and $h$ must be eq
 The EGNN architecture is composed of L Equivariant Convolutional Layers EGCL layers wich applies non-linear transformation, that owe their equivariance to the fact that they use  the coordinates difference among all nodes in the molecule.
 
 According with [Ho et al. (2020)$^{[10]}$](#10-ho-j-jain-a-and-abbeel-p-denoising-diffusion-probabilistic-models-arxiv-preprint-arxiv200611239-2020), it is actually easier to optimize the neural network $\phi$ when we predict the Gaussian noise $\hat{\epsilon} = [\hat{\epsilon}_x,\hat{\epsilon}_h]$ of $\hat{x}$ and $\hat{h}$ instead, with $\hat{\mathbf{\epsilon}}_t = \phi(z_t, t)$ such that:
+
+
 $$
 [\mathbf{\hat{x}}, \mathbf{\hat{h}}] = \mathbf{z}_t/ \alpha_t - \hat{\mathbf{\epsilon}}\cdot \sigma_t / \alpha_t 
 $$

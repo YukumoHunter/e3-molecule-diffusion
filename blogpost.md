@@ -38,7 +38,7 @@ The use of Diffusion Models have gained more attention since the introduction of
 
 These models operate by iteratively denoising a sample starting from pure noise, guided by a learned probability distribution that captures the underlying structure of the target data. 
 
-In contrast to other generative models, in diffusion models the generative process is defined with respect to the _true denoising process_, which is known after modelling the reverse process of diffusion to a certain given data point **$x_0$**.
+In contrast to other generative models, in diffusion models the generative process is defined with respect to the _true denoising process_, which is known after modelling the reverse process of diffusion from a certain given data point **$x_0$**.
 
 ![Picture from](img/diffusion_cat.png)
 
@@ -92,9 +92,9 @@ $$\mathbf{R} f(\mathbf{x}) + \mathbf{t}=f(\mathbf{Rx + t})$$
 ## EDM: E(3) Equivariance Diffusion Model for molecules generation
 
 > The Equivariance Diffusion Model has the following four key points: 
-> 1.  It uses a generative diffusion process for molecules generation: modelates $q(\mathbf{z}_t |\mathbf{x,h})$.
-> 2. The distribution from which noise, coordinates $\hat{x}$ and features $\hat{h}$ are sampled must be invariant: use of **center of gravity**.
-> 3. The Neural Network $\phi$ that predicts coordinates $x$ and features $h$ for the distribution must be equivariant: use of **EGNN**.
+> 1.  It uses a generative diffusion process for molecules generation: models $q(\mathbf{z}_t |\mathbf{x,h})$.
+> 2. The distribution from which noise, coordinates $\hat{x}$ and features $\hat{h}$ are sampled is E(n) invariant: use of **center of gravity**.
+> 3. The Neural Network $\phi$ that predicts coordinates $x$ and features $h$ for the distribution is E(n) equivariant: use of **EGNN**.
 > 4. It is easier to optimize the Neural Network $\phi$ if it predicts the Gaussian noise $\hat{\epsilon}$ that is used for predicting $\hat{x}$ and $\hat{h}$. 
 
 In this work interactions between all atoms are considered and model through a fully connected graph $\mathcal{G}$ with nodes $v_i \in \mathcal{V}$. Each node $v_i$ has associated a coordinate representation $\mathbf{x}_i \in \mathbb{R}^3$ and an attribute vector $ \mathbf{h}_i \in \mathbb{R}^d$ .
@@ -156,7 +156,7 @@ JAX handles graphs efficiently despite their irregular data structures using sev
 >Our contribution to this project had three goals:
 >1. First, we reproduce the original **E(3) Equivariance Diffusion Model (EDM)**.
 >2. We rewrote the train and evaluation of the original paper using JAX. With this, we expect the model to be significantly faster than the original with similar results in terms of the metric: negative Log Likelihood. 
->3. We experimented with our JAX version of the code by changing the number of time steps that we jit together, comparing both run and compilation times.
+>3. We experimented with our JAX version of the code by changing the number of diffusion steps that we jit together, comparing both run and compilation times.
 
 Our primary contribution was meant to be re-implementing the original EDM from ([Hogeboom (2022)](#7-hoogeboom-e-satorras-v-g-vignac-c-and-welling-m-2022-equivariant-diffusion-for-molecule-generation-in-3d)) in the JAX/FLAX framework. JAX, with its ability to automatically differentiate through native Python and Numpy functions, and FLAX, which provides a high-level interface for neural network building, collectively offer significant advantages in terms of performance and flexibility.
 
@@ -168,7 +168,7 @@ By porting the model to JAX/FLAX, we aimed to:
 
 Besides rewriting the code in JAX, we also ran the original PyTorch code alongside the new JAX code to reproduce it and to compare results. Both code runs used the same hyperparameters, allowing for a direct comparison of performance and outcomes.
 
-Finally, we wanted to test how does jit functions affect GIT performance, and in order to evaluate it we measured the run and compilation time when we apply jit for among time steps. We measured this by changing jit when sampling generated molecules. 
+Finally, we wanted to test how do jitted functions affect the performance, and in order to evaluate it we measured the run and compilation time when we apply jit to a different number of timesteps during molecule generation.
 
 <!-- 
 ## Key Experiments
@@ -186,7 +186,11 @@ Our Experiments focused on two primary tasks to thorougly assess the capabilitie
 
 ## Implementation 
 
-Our code is aviable in our repository and it is currently running. Some of the keys to understand our implementation were:
+Our code is available in our repository and it is currently running. 
+
+To implement the model with JAX we made use of other libraries that are useful to build neural networks with JAX. Flax and Optax, that allow for an development process. Flax allows to create objects that mimic the pytorch nn.Module networks while not containing the parameters and other mutable variables as attributtes. Optax allows for ready to use optimizers.
+
+Flax allows that the forward passes of the different modelues are similar to the pytorch version there is not much interest in the comparison of this part. 
 
 - **Generic Forward Pass:**
     - JAX:
@@ -237,8 +241,9 @@ Our code is aviable in our repository and it is currently running. Some of the k
         x = torch.randn(1, 784)  # Example input: batch size of 1
         logits = model(x)
         ```
-        
-        JAX uses a functional programming style with pure functions, while PyTorch opts for a more object-oriented approach where models are instances of a nn.Module.
+    
+    To see specific implementations of the EGNN and the difussion model see [src/egnn/egnn.py](src/egnn/egnn.py), [src/egnn/models.py](src/egnn/models.py) and [equivariant_diffusion/en_diffusion.py](src/equivariant_diffusion/en_diffusion.py)
+    However, the backward pass is computed differently. In pytorch, after the forward pass and the computation of the loss, the gradient is calculated backtracking the operations and stored outputs of each calculation. In JAX, we define a loss function that depends on the parameters and then, the functional jax.grad is used to compute the gradient function of the loss with respect to the parameters. Then this gradient is evaluated on the parameters. This way, JAX generates the gradient function independently of the parameters so we can compile that gradient function straightforward to make it faster.
         
 - **Backward pass:**
     - JAX:
@@ -274,47 +279,11 @@ Our code is aviable in our repository and it is currently running. Some of the k
         loss.backward()
         ```
         
-        Both approaches automatically handle differentiation. Again JAX uses a more functional approach, as opposed to the OOP style of PyTorch
+        Both approaches automatically handle differentiation. Again JAX uses a more functional approach, as opposed to the OOP style of PyTorch.
         
-- **Graph Padding:**
-    - JAX:
-        
-        ```python
-        x_padded = jnp.pad(x, padding, mode='constant', constant_values=0)
-        ```
-        
-    - PyTorch:
-        
-        ```python
-        x_padded = F.pad(x, padding, mode='constant', value=0)
-        ```
-        
-        Both approaches are similar and straightforward.
-        
-- **Noise Schedule:**
-    - JAX:
-        
-        ```python
-        # Add noise to the inputs during training
-        noise_level = noise_schedule(epoch, total_epochs)
-        x = random.normal(key, (1, 784))  # Example input
-        x_noisy = add_noise(x, noise_level, key)
-        logits = forward(params, x_noisy)
-        ```
-        
-    - PyTorch:
-        
-        ```python
-        # Add noise to the inputs during training
-        noise_level = noise_schedule(epoch, total_epochs)
-        x = torch.randn(1, 784)  # Example input
-        model.train()
-        x_noisy = add_noise(x, noise_level)
-        optimizer.zero_grad()
-        logits = model(x_noisy)
-        ```
-        
-        Adding noise is the exact same, except for the fact that in PyTorch the model needs to be put into training mode.
+        For more details on the backward pass and training step see [src/train_test.py](src/train_test.py)
+
+
         
 <!-- ## Comparison
 
@@ -379,7 +348,7 @@ However, we would like to finish what we started and get the promising results t
 
 ### 3. Experiments with the number of steps we jit
 
-The goal of this experiment was to find the optimum of speed through a balance among run and compilation time, as JIT let us the possiblity of of jit a certain number of steps. However, the bigger the number of number of steps, the larger time compilation requires. 
+The goal of this experiment was to find the optimum speed through a balance among run and compilation time, as jit let us the possiblity of of jit a certain number of steps. However, the bigger the number of number of steps, the larger time compilation requires. 
 
 <<<<<<< HEAD
 Unfortunately, the problems we had for running codes also affected this section and, even if we had everything ready to be runed, we couldn't get the results. 

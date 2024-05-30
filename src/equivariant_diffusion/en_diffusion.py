@@ -315,7 +315,6 @@ def cdf_standard_gaussian(x):
     return 0.5 * (1.0 + erf(x / jnp.sqrt(2)))
 
 
-# Harold and Robin part
 class EnVariationalDiffusion(nn.Module):
     """
     The E(n) Diffusion Module in JAX.
